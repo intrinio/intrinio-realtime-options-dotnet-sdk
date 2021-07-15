@@ -10,28 +10,53 @@ namespace SampleApp
 		private static Client client = null;
 		private static Timer timer = null;
 		private static readonly ConcurrentDictionary<string, int> symbols = new ConcurrentDictionary<string, int>(5, 1_500_000);
+		private static readonly ConcurrentDictionary<string, int> openInterest = new ConcurrentDictionary<string, int>(5, 1_500_000);
 		private static int maxCount = 0;
 		private static Quote maxCountQuote;
+
 		private static readonly object obj = new object();
-		
-		static void OnQuote(Quote quote)
+
+		static void OnMessage(SocketMessage socketMessage)
 		{
-			string key = quote.Symbol + ":" + quote.Type;
-			if (!symbols.ContainsKey(key)) {
-				symbols[key] = 1;
-			} else
+			if (socketMessage.IsQuote)
 			{
-				symbols[key]++;
-			}
-			if (symbols[key] > maxCount)
-			{
-				lock (obj)
+				string key = socketMessage.quote.Symbol + ":" + socketMessage.quote.Type;
+				if (!symbols.ContainsKey(key)) {
+					symbols[key] = 1;
+				} else
 				{
-					maxCount++;
-					maxCountQuote = quote;
+					symbols[key]++;
+				}
+				if (symbols[key] > maxCount)
+				{
+					lock (obj)
+					{
+						maxCount++;
+						maxCountQuote = socketMessage.quote;
+					}
 				}
 			}
+			else if (socketMessage.IsTrade)
+			{
+				string key = socketMessage.trade.Symbol + ":trade";
+				if (!symbols.ContainsKey(key)) {
+					symbols[key] = 1;
+				} else
+				{
+					symbols[key]++;
+				}
+			}
+			else if (socketMessage.IsOpenInterest)
+			{
+				string key = socketMessage.openInterest.Symbol;
+
+				symbols[key] = socketMessage.openInterest.OpenInterest;
+				Client.Log("{0} openInterest updated to {1}", socketMessage.openInterest.Symbol,
+					socketMessage.openInterest.OpenInterest);
+				
+			}
 		}
+		
 
 		static void TimerCallback(object obj)
 		{
@@ -59,7 +84,7 @@ namespace SampleApp
 		static void Main(string[] args)
 		{
 			Client.Log("Starting sample app");
-			client = new Client(OnQuote);
+			client = new Client(OnMessage);
 			timer = new Timer(TimerCallback, client, 10000, 10000);
 			client.Join();
 			Console.CancelKeyPress += new ConsoleCancelEventHandler(Cancel);
