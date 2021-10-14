@@ -1,0 +1,24 @@
+{
+	"Config": {
+		"ApiKey": "",
+		"Provider": "OPRA",
+		"Symbols": [ "GOOG__210917C01040000", "MSFT__210917C00180000", "AAPL__210917C00130000" ],
+		//"Provider": "OPRA_FIREHOSE",
+		//"Symbols": [ "lobby_trades_only" ],
+		"NumThreads": 8,
+		"TradesOnly": true
+	},
+	"Serilog": {
+		"Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],
+		"MinimumLevel": {
+			"Default": "Information",
+			"Override": {
+				"Microsoft": "Warning",
+				"System": "Warning"
+			}
+		},
+		"WriteTo": [
+			{ "Name": "Console" }
+		]
+	}
+}
