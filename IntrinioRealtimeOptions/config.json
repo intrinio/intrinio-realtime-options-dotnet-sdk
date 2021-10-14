@@ -4,9 +4,10 @@
 		"Provider": "OPRA",
 		"Symbols": [ "GOOG__210917C01040000", "MSFT__210917C00180000", "AAPL__210917C00130000" ],
 		//"Provider": "OPRA_FIREHOSE",
+		//"Symbols": [ "lobby" ],
 		//"Symbols": [ "lobby_trades_only" ],
-		"NumThreads": 8,
-		"TradesOnly": true
+		"TradesOnly": true,
+		"NumThreads": 8
 	},
 	"Serilog": {
 		"Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],
