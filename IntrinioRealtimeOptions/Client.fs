@@ -132,29 +132,32 @@ type Client(
         }
 
     let parseSocketMessage (bytes: byte[], startIndex: byref<int>) : unit =
-        let msgType = enum<MessageType> (int32 bytes.[startIndex + 21])
-        match msgType with
-        | MessageType.Ask | MessageType.Bid -> 
+        let msgType : int = int32 bytes.[startIndex + 21]
+        if ((msgType = 1) || (msgType = 2))
+        then 
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 42)
             let quote: Quote = parseQuote(chunk)
             startIndex <- startIndex + 42
             if not useOnQuote then onQuote.Invoke(quote)
-        | MessageType.Trade -> 
+        elif (msgType = 0)
+        then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 50)
             let trade: Trade = parseTrade(chunk)
             startIndex <- startIndex + 50
             if not useOnTrade then onTrade.Invoke(trade)
-        | MessageType.UnusualActivity -> 
+        elif (msgType > 3)
+        then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 55)
             let ua: UnusualActivity = parseUnusualActivity(chunk)
             startIndex <- startIndex + 55
             if not useOnUA then onUnusualActivity.Invoke(ua)
-        | MessageType.OpenInterest -> 
+        elif (msgType = 3)
+        then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 34)
             let openInterest = parseOpenInterest(chunk)
             startIndex <- startIndex + 34
             if not useOnOI then onOpenInterest.Invoke(openInterest)
-        | _ -> Log.Warning("Invalid MessageType: {0}", (int32 bytes.[startIndex + 21]))
+        else Log.Warning("Invalid MessageType: {0}", msgType)
 
     let heartbeatFn () =
         let ct = ctSource.Token

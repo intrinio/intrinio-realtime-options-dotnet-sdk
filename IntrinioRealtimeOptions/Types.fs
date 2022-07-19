@@ -10,13 +10,6 @@ type Provider =
     | MANUAL = 3
     | MANUAL_FIREHOSE = 4
 
-type MessageType =
-    | Trade = 0
-    | Ask = 1
-    | Bid = 2
-    | OpenInterest = 3
-    | UnusualActivity = 4
-
 type QuoteType =
     | Ask = 1
     | Bid = 2
@@ -51,7 +44,7 @@ type [<Struct>] Quote =
 
     override this.ToString() : string =
         "Quote (" +
-        "Type: " + MessageType.GetName(this.Type) +
+        "Type: " + QuoteType.GetName(this.Type) +
         ", Symbol: " + this.Symbol +
         ", Price: " + this.Price.ToString("f2") +
         ", Size: " + this.Size.ToString() +
