@@ -89,9 +89,9 @@ type [<Struct>] OpenInterest =
     }
 
 type UAType =
-    | Block = 0
-    | Sweep = 1
-    | Large = 2
+    | Block = 4
+    | Sweep = 5
+    | Large = 6
 
 type UASentiment =
     | Neutral = 0
