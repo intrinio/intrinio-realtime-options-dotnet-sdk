@@ -138,25 +138,25 @@ type Client(
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 42)
             let quote: Quote = parseQuote(chunk)
             startIndex <- startIndex + 42
-            if not useOnQuote then onQuote.Invoke(quote)
+            if useOnQuote then onQuote.Invoke(quote)
         elif (msgType = 0)
         then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 50)
             let trade: Trade = parseTrade(chunk)
             startIndex <- startIndex + 50
-            if not useOnTrade then onTrade.Invoke(trade)
+            if useOnTrade then onTrade.Invoke(trade)
         elif (msgType > 3)
         then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 55)
             let ua: UnusualActivity = parseUnusualActivity(chunk)
             startIndex <- startIndex + 55
-            if not useOnUA then onUnusualActivity.Invoke(ua)
+            if useOnUA then onUnusualActivity.Invoke(ua)
         elif (msgType = 3)
         then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 34)
             let openInterest = parseOpenInterest(chunk)
             startIndex <- startIndex + 34
-            if not useOnOI then onOpenInterest.Invoke(openInterest)
+            if useOnOI then onOpenInterest.Invoke(openInterest)
         else Log.Warning("Invalid MessageType: {0}", msgType)
 
     let heartbeatFn () =
