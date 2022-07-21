@@ -350,19 +350,26 @@ type Client(
         wsStates |> Array.iter (fun (wss: WebSocketState) -> wss.WebSocket.Open())
 
     let join(symbol: string) : unit =
-        if channels.Add(symbol)
-        then 
-            let sb : StringBuilder = new StringBuilder()
-            if useOnTrade then sb.Append(",\"trade_data\":\"true\"") |> ignore
-            if useOnQuote then sb.Append(",\"quote_data\":\"true\"") |> ignore
-            if useOnOI then sb.Append(",\"open_interest_data\":\"true\"") |> ignore
-            if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
-            let subscriptionSelection : string = sb.ToString()
-            let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
-            wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
-                Log.Information("Websocket {0} - Joining channel: {1:l} ({2:l})", index, symbol, subscriptionSelection.TrimStart(','))
-                try wss.WebSocket.Send(message)
-                with _ -> channels.Remove(symbol) |> ignore )
+        if (((symbol = "lobby") || (symbol = "lobby_trades_only")) &&
+            ((config.Provider <> Provider.MANUAL_FIREHOSE) && (config.Provider <> Provider.OPRA_FIREHOSE)))
+        then Log.Warning("Only 'FIREHOSE' providers may join the lobby channel")
+        elif (((symbol <> "lobby") && (symbol <> "lobby_trades_only")) &&
+            ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE)))
+        then Log.Warning("'FIREHOSE' providers may only join the lobby channel")
+        else
+            if channels.Add(symbol)
+            then 
+                let sb : StringBuilder = new StringBuilder()
+                if useOnTrade then sb.Append(",\"trade_data\":\"true\"") |> ignore
+                if useOnQuote then sb.Append(",\"quote_data\":\"true\"") |> ignore
+                if useOnOI then sb.Append(",\"open_interest_data\":\"true\"") |> ignore
+                if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
+                let subscriptionSelection : string = sb.ToString()
+                let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
+                wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
+                    Log.Information("Websocket {0} - Joining channel: {1:l} ({2:l})", index, symbol, subscriptionSelection.TrimStart(','))
+                    try wss.WebSocket.Send(message)
+                    with _ -> channels.Remove(symbol) |> ignore )
 
     let leave(symbol: string) : unit =
         if channels.Remove(symbol)
@@ -374,6 +381,8 @@ type Client(
                 with _ -> () )
 
     do
+        httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
+        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv2.0")
         tryReconnect <- fun (index:int) () ->
             let reconnectFn () : bool =
                 Log.Information("Websocket {0} - Reconnecting...", index)
@@ -396,23 +405,41 @@ type Client(
         initializeWebSockets(_token)
 
     member _.Join() : unit =
-        while not(allReady()) do Thread.Sleep(1000)
-        let symbolsToAdd : HashSet<string> = new HashSet<string>(config.Symbols)
-        symbolsToAdd.ExceptWith(channels)
-        for symbol in symbolsToAdd do join(symbol)
+        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
+        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
+        else
+            while not(allReady()) do Thread.Sleep(1000)
+            let symbolsToAdd : HashSet<string> = new HashSet<string>(config.Symbols)
+            symbolsToAdd.ExceptWith(channels)
+            for symbol in symbolsToAdd do join(symbol)
 
     member _.Join(symbol: string) : unit =
-        if not (String.IsNullOrWhiteSpace(symbol))
-        then
-            while not(allReady()) do Thread.Sleep(1000)
-            if not (channels.Contains(symbol))
-            then join(symbol)
+        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
+        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
+        else
+            if not (String.IsNullOrWhiteSpace(symbol))
+            then
+                while not(allReady()) do Thread.Sleep(1000)
+                if not (channels.Contains(symbol))
+                then join(symbol)
 
     member _.Join(symbols: string[]) : unit =
-        while not(allReady()) do Thread.Sleep(1000)
-        let symbolsToAdd : HashSet<string> = new HashSet<string>(symbols)
-        symbolsToAdd.ExceptWith(channels)
-        for symbol in symbolsToAdd do join(symbol)
+        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
+        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
+        else
+            while not(allReady()) do Thread.Sleep(1000)
+            let symbolsToAdd : HashSet<string> = new HashSet<string>(symbols)
+            symbolsToAdd.ExceptWith(channels)
+            for symbol in symbolsToAdd do join(symbol)
+
+    member _.JoinLobby() : unit =
+        if ((config.Provider <> Provider.MANUAL_FIREHOSE) && (config.Provider <> Provider.OPRA_FIREHOSE))
+        then Log.Warning("Only 'FIREHOSE' providers may join the lobby channel")
+        elif (channels.Contains("lobby"))
+        then Log.Warning("This client has already joined the lobby channel")
+        else
+            while not (allReady()) do Thread.Sleep(1000)
+            join("lobby")
 
     member _.Leave() : unit =
         for channel in channels do leave(channel)
@@ -425,6 +452,10 @@ type Client(
         let matchingChannels : HashSet<string> = new HashSet<string>(symbols)
         matchingChannels.IntersectWith(channels)
         for channel in matchingChannels do leave(channel)
+
+    member _.LeaveLobby() : unit =
+        if (channels.Contains("lobby"))
+        then leave("lobby")
 
     member _.Stop() : unit =
         for channel in channels do leave(channel)
