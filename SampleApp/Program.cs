@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Threading;
-using System.Collections.Concurrent;
-using System.IO;
 using Intrinio;
 
 namespace SampleApp
@@ -82,13 +80,29 @@ namespace SampleApp
 		static void Main(string[] args)
 		{
 			Client.Log("Starting sample app");
+
+			// Register only the callbacks that you want.
+			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
 			client = new Client(onTrade: OnTrade, onQuote: OnQuote, onOpenInterest: OnOpenInterest, onUnusualActivity: OnUnusualActivity);
+			
 			timer = new Timer(TimerCallback, client, 10000, 10000);
+
+			// Use this to subscribe to a static list of symbols (option contracts) provided in config.json
 			//client.Join();
-			client.Join("MSFT");
+
+			// Use this to subscribe to the entire univers of symbols (option contracts). This requires special permission.
+			//client.JoinLobby();
+
+			// Use this to subscribe, dynamically, to an option chain (all option contracts for a given underlying symbol).
+			//client.Join("AAPL");
+
+			// Use this to subscribe, dynamically, to a specific option contract.
 			//client.Join("AAP___230616P00250000");
-			//string[] clients = { "GOOG__220408C02870000", "MSFT__220408C00315000", "AAPL__220414C00180000" };
-            //client.Join(clients, false);
+
+			// Use this to subscribe, dynamically, a list of specific option contracts or option chains.
+			//string[] clients = { "GOOG__220408C02870000", "MSFT__220408C00315000", "AAPL__220414C00180000", "TSLA", "GE" };
+            //client.Join(clients);
+
 			Console.CancelKeyPress += new ConsoleCancelEventHandler(Cancel);
 		}		
 	}
