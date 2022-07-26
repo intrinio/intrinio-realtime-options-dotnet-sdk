@@ -1,11 +1,11 @@
 # intrinio-realtime-options-dotnet-sdk
-SDK for working with Intrinio's realtime options feed
+SDK for working with Intrinio's realtime options feed via WebSocket
 
 [Intrinio](https://intrinio.com/) provides real-time stock option prices via a two-way WebSocket connection. To get started, [subscribe to a real-time data feed](https://intrinio.com/financial-market-data/options-data) and follow the instructions below.
 
 ## Requirements
 
-- .NET 5+
+- .NET 6+
 
 ## Installation
 
@@ -17,15 +17,18 @@ For a sample .NET project see: [intrinio-realtime-options-dotnet-sdk](https://gi
 
 ## Features
 
-* Receive streaming, real-time option price quotes (last trade, bid, ask)
-* Subscribe to updates from individual options contracts
-* Subscribe to updates for all options contracts
+* Receive streaming, real-time option price updates:
+	* every trade
+	* conflated bid and ask
+	* open interest
+	* unusual activity(block trades, sweeps, whale trades)
+* Subscribe to updates from individual options contracts (or option chains)
+* Subscribe to updates for the entire univers of option contracts (~1.5M option contracts)
 
 ## Example Usage
 ```csharp
 using System;
 using System.Threading;
-using System.Collections.Concurrent;
 using Intrinio;
 
 namespace SampleApp
@@ -34,65 +37,56 @@ namespace SampleApp
 	{
 		private static Client client = null;
 		private static Timer timer = null;
-		private static readonly ConcurrentDictionary<string, int> trades = new ConcurrentDictionary<string, int>(5, 1_500_000);
-		private static readonly ConcurrentDictionary<string, int> quotes = new ConcurrentDictionary<string, int>(5, 1_500_000);
-		private static int maxTradeCount = 0;
-		private static int maxQuoteCount = 0;
+		private static int tradeCount = 0;
+		private static int askCount = 0;
+		private static int bidCount = 0;
 		private static int openInterestCount = 0;
-		private static Trade maxCountTrade;
-		private static Quote maxCountQuote;
-		private static OpenInterest maxOpenInterest;
+		private static int blockCount = 0;
+		private static int sweepCount = 0;
+		private static int largeTradeCount = 0;
 
 		private static readonly object obj = new object();
 
 		static void OnQuote(Quote quote)
 		{
-			string key = quote.Symbol + ":" + quote.Type;
-			if (!quotes.ContainsKey(key))
+			if (quote.Type == QuoteType.Ask)
 			{
-				quotes[key] = 1;
+				Interlocked.Increment(ref askCount);
+			}
+			else if (quote.Type == QuoteType.Bid)
+			{
+				Interlocked.Increment(ref bidCount);
 			}
 			else
-			{
-				quotes[key]++;
-			}
-			if (quotes[key] > maxQuoteCount)
-			{
-				lock (obj)
-				{
-					maxQuoteCount++;
-					maxCountQuote = quote;
-				}
-			}
+            {
+				Client.Log("Invalid quote type detected: {0}", quote.Type);
+            }
 		}
 
 		static void OnTrade(Trade trade)
 		{
-			string key = trade.Symbol + ":trade";
-			if (!trades.ContainsKey(key))
-			{
-				trades[key] = 1;
-			}
-			else
-			{
-				trades[key]++;
-			}
-			if (trades[key] > maxTradeCount)
-			{
-				lock (obj)
-				{
-					maxTradeCount++;
-					maxCountTrade = trade;
-				}
-			}
+			Interlocked.Increment(ref tradeCount);
 		}
 
 		static void OnOpenInterest(OpenInterest openInterest)
 		{
-			openInterestCount++;
-			if (openInterest.OpenInterest > maxOpenInterest.OpenInterest)
-			{
-				maxOpenInterest = openInterest;
+			Interlocked.Increment(ref openInterestCount);
+		}
+
+		static void OnUnusualActivity(UnusualActivity unusualActivity)
+		{
+			if (unusualActivity.Type == UAType.Block)
+            {
+				Interlocked.Increment(ref blockCount);
+            } else if (unusualActivity.Type == UAType.Sweep)
+            {
+				Interlocked.Increment(ref sweepCount);
+            } else if (unusualActivity.Type == UAType.Large)
+            {
+				Interlocked.Increment(ref largeTradeCount);
+            } else
+            {
+				Client.Log("Invalid UA type detected: {0}", unusualActivity.Type);
 			}
 		}
 
@@ -100,19 +94,8 @@ namespace SampleApp
 		{
 			Client client = (Client) obj;
 			Tuple<Int64, Int64, int> stats = client.GetStats();
-			Client.Log("Data Messages = {0}, Text Messages = {1}, Queue Depth = {2}", stats.Item1, stats.Item2, stats.Item3);
-			if (maxTradeCount > 0)
-			{
-				Client.Log("Most active trade symbol: {0:l} ({1} updates)", maxCountTrade.Symbol, maxTradeCount);
-			}
-			if (maxQuoteCount > 0)
-			{
-				Client.Log("Most active quote symbol: {0:l}:{1} ({2} updates)", maxCountQuote.Symbol, maxCountQuote.Type, maxQuoteCount);
-			}
-			if (openInterestCount > 0)
-			{
-				Client.Log("{0} open interest updates. Highest open interest symbol: {1:l} ({2})", openInterestCount, maxOpenInterest.Symbol, maxOpenInterest.OpenInterest);
-			}
+			Client.Log("CLIENT STATS - Data Messages = {0}, Text Messages = {1}, Queue Depth = {2}", stats.Item1, stats.Item2, stats.Item3);
+			Client.Log("PROGRAM STATS - Trades = {0}, Asks = {1}, Bids = {2}, OIs = {3}, Blocks = {4}, Sweeps = {5}, Large Trades = {6}", tradeCount, askCount, bidCount, openInterestCount, blockCount, sweepCount, largeTradeCount);
 		}
 
 		static void Cancel(object sender, ConsoleCancelEventArgs args)
@@ -126,9 +109,29 @@ namespace SampleApp
 		static void Main(string[] args)
 		{
 			Client.Log("Starting sample app");
-			client = new Client(OnTrade, OnQuote, OnOpenInterest);
+			
+			// Register only the callbacks that you want.
+			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
+			client = new Client(onTrade: OnTrade, onQuote: OnQuote, onOpenInterest: OnOpenInterest, onUnusualActivity: OnUnusualActivity);
+			
 			timer = new Timer(TimerCallback, client, 10000, 10000);
-			client.Join();
+
+			// Use this to subscribe to a static list of symbols (option contracts) provided in config.json
+			//client.Join();
+
+			// Use this to subscribe to the entire univers of symbols (option contracts). This requires special permission.
+			//client.JoinLobby();
+
+			// Use this to subscribe, dynamically, to an option chain (all option contracts for a given underlying symbol).
+			//client.Join("AAPL");
+
+			// Use this to subscribe, dynamically, to a specific option contract.
+			//client.Join("AAP___230616P00250000");
+
+			// Use this to subscribe, dynamically, a list of specific option contracts or option chains.
+			//string[] clients = { "GOOG__220408C02870000", "MSFT__220408C00315000", "AAPL__220414C00180000", "TSLA", "GE" };
+            //client.Join(clients);
+
 			Console.CancelKeyPress += new ConsoleCancelEventHandler(Cancel);
 		}		
 	}
@@ -139,7 +142,9 @@ namespace SampleApp
 
 ## Handling Quotes
 
-There are millions of options contracts, each with their own feed of activity.  We highly encourage you to make your OnTrade, OnQuote, and OnOpenInterest methods has short as possible and follow a queue pattern so your app can handle the volume of activity options data has.
+There are millions of options contracts, each with their own feed of activity.
+We highly encourage you to make your OnTrade, OnQuote, OnUnusualActivity, and OnOpenInterest methods has short as possible and follow a queue pattern so your app can handle the large volume of activity.
+Note that quotes (ask and bid updates) comprise 99% of the volume of the entire feed. Be cautious when deciding to receive quote updates.
 
 ## Providers
 
@@ -192,7 +197,7 @@ type [<Struct>] Quote =
 * **Timestamp** - a Unix timestamp (with microsecond precision)
 
 
-### Open Interst Message
+### Open Interest Message
 
 ```fsharp
 type [<Struct>] OpenInterest =
@@ -207,6 +212,40 @@ type [<Struct>] OpenInterest =
 * **Timestamp** - a Unix timestamp (with microsecond precision)
 * **OpenInterest** - the total quantity of opened contracts as reported at the start of the trading day
 
+### Unusual Activity Message
+
+```fsharp
+type [<Struct>] UnusualActivity =
+    {
+        Symbol : string
+        Type : UAType
+        Sentiment : UASentiment
+        TotalValue : single
+        TotalSize : uint32
+        AveragePrice : single
+        AskAtExecution : single
+        BidAtExecution : single
+        PriceAtExecution : single
+        Timestamp : double
+    }
+```
+
+* **Symbol** - Identifier for the options contract.  This includes the ticker symbol, put/call, expiry, and strike price.
+* **Type** - The type of unusual activity that was detected
+  *    **`Block`** - represents an 'block' trade
+  *    **`Sweep`** - represents an intermarket sweep
+  *    **`Large`** - represents a trade of at least $100,000
+* **Sentiment** - The sentiment of the unusual activity event
+  *    **`Neutral`** - 
+  *    **`Bullish`** - 
+  *    **`Bearish`** - 
+* **TotalValue** - The total value of the trade in USD. 'Sweeps' and 'blocks' can be comprised of multiple trades. This is the value of the entire event.
+* **TotalValue** - The total size of the trade in number of contracts. 'Sweeps' and 'blocks' can be comprised of multiple trades. This is the total number of contracts exchanged during the event.
+* **AveragePrice** - The average price at which the trade was executed. 'Sweeps' and 'blocks' can be comprised of multiple trades. This is the average trade price for the entire event.
+* **AskAtExecution** - The 'ask' price of the underlying at execution of the trade event.
+* **BidAtExecution** - The 'bid' price of the underlying at execution of the trade event.
+* **PriceAtExecution** - The last trade price of the underlying at execution of the trade event.
+* **Timestamp** - a Unix timestamp (with microsecond precision).
 
 ## API Keys
 
@@ -214,16 +253,44 @@ You will receive your Intrinio API Key after [creating an account](https://intri
 
 ## Documentation
 
+### Overview
+
+The Intrinio Realtime Client will handle authorization as well as establishment and management of all necessary WebSocket connections. All you need to get started is your API key.
+The first thing that you'll do is create a new `Client` object, passing in a series of callbacks. These callback methods tell the client what types of subscriptions you will be setting up.
+Creating a `Client` object will immediately attempt to authorize your API key (provided in the config.json file). If authoriztion is successful, the object constructor will, also, open up the necessary connections.
+After a `Client` object has been created, you may subscribe to receive feed updates from the server.
+You may subscribe to static list of symbols (a mixed list of option contracts and/or option chains). 
+Or, you may subscribe, dynamically, to option contracts, option chains, or a mixed list thereof.
+It is also possible to subscribe to the entire universe of option contracts by switching the `Provider` to "OPRA_FIREHOSE" (in config.json) and calling `JoinLobby`.
+The volume of data provided by the `Firehose` exceeds 100Mbps and requires special authorization.
+If you are using the non-firehose feed, you may update your subscriptions on the fly, using the `Join` and `Leave` methods.
+The WebSocket client is designed for near-indefinite operation. It will automatically reconnect if a connection drops/fails and when then servers turn on every morning.
+If you wish to perform a graceful shutdown of the application, please call the `Stop` method.
+
 ### Methods
 
-`Client client = new Client(OnTrade, OnQuote, OnOpenInterest);` - Creates an Intrinio Real-Time client. The provided actions implement OnTrade, OnQuote, and OnOpenInterest which handle what happens when the associated event happens.
-* **Parameter** `onTrade`: The Action accepting trades.
-* **Parameter** `onQuote`: The Action accepting quotes.
-* **Parameter** `onOpenInterest`: The Action accepting open interests.
+`Client client = new Client(OnTrade, OnQuote, OnOpenInterest, OnUnusualActivity);` - Creates an Intrinio Real-Time client. The provided actions implement OnTrade, OnQuote, OnOpenInterest, and OnUnusualActivity which handle what happens when the associated event happens.
+* **Parameter** `onTrade`: The Action accepting trades. If no `onTrade` callback is provided, you will not receive trade updates from the server.
+* **Parameter** `onQuote`: The Action accepting quotes. If no `onQuote` callback is provided, you will not receive quote (ask, bid) updates from the server.
+* **Parameter** `onOpenInterest`: The Action accepting open interest messages. If no `onOpenInterest` callback is provided, you will not receive open interest data from the server. Note: open interest data is only updated at the beginning of every trading day. If this callback is provided you will recieve an update immediately, as well as every 15 minutes (approx).
+* **Parameter** `onUnusualActivity`: The Action accepting unusual activity events. If no `onUnusualActivity` callback is provided, you will not receive unusual activity updates from the server.
 
 ---------
 
 `client.Join();` - Joins channel(s) configured in config.json.
+`client.Join(String channel)` - Joins the provided channel. E.g. "AAPL" or "GOOG__210917C01040000"
+`client.Join(String[] channels)` - Joins the provided channels. E.g. [ "AAPL", "MSFT__210917C00180000", "GOOG__210917C01040000" ]
+`client.JoinLobby()` - Joins the 'lobby' (aka. firehose) channel. The provider must be set to `OPRA_FIREHOSE` for this to work. This requires special account permissions.
+
+---------
+
+`client.Leave();` - Leaves all joined channels/subscriptions, including `lobby`.
+`client.Leave(String channel)` - Leaves the specified channel. E.g. "AAPL" or "GOOG__210917C01040000"
+`client.Leave(String[] channels)` - Leaves the specified channels. E.g. [ "AAPL", "MSFT__210917C00180000", "GOOG__210917C01040000" ]
+
+---------
+
+`client.Stop();` - Stops the Intrinio Realtime WebSocket Client. This method will leave all joined channels, stop all threads, and gracefully close the websocket connection(s).
 
 ## Configuration
 
@@ -233,11 +300,8 @@ You will receive your Intrinio API Key after [creating an account](https://intri
 	"Config": {
 		"ApiKey": "", //Your Intrinio API key.
 		"Provider": "OPRA", //This is the mode for subscribing to individual contracts.
-		"Symbols": [ "GOOG__210917C01040000", "MSFT__210917C00180000", "AAPL__210917C00130000" ], //This is a list of individual contracts to subscribe to.
-		//"Provider": "OPRA_FIREHOSE", //This is the mode for subscribing to all contracts.  Can not do both providers from the same process.  Start another process with another provider if you with do have both modes running.
-		//"Symbols": [ "lobby" ], //This will include all trades, quotes, and open interest events for all contracts
-		//"Symbols": [ "lobby_trades_only" ], //This will include only trade events for all contracts
-		"TradesOnly": true, //In either firehose or selective mode (provider), this indicates whether you only want trade events (true) or you want trades, quotes, and open interest events (false)
+		"Symbols": [ "GOOG__210917C01040000", "MSFT__210917C00180000", "AAPL__210917C00130000", "SPY" ], //This is a list of individual contracts (or option chains) to subscribe to.
+		//"Provider": "OPRA_FIREHOSE", //This is the mode for subscribing to all contracts. Note: You cannot connect to both `OPRA` and `OPRA_FIREHOSE` providers from the same process. Start another process with another provider if you wish to have both modes running.
 		"NumThreads": 8 //The number of threads to use for processing events.
 	},
 	"Serilog": {
@@ -251,6 +315,13 @@ You will receive your Intrinio API Key after [creating an account](https://intri
 		},
 		"WriteTo": [
 			{ "Name": "Console" }
+			// Uncomment to log to file
+			//{
+			//	"Name": "File",
+			//	"Args": {
+			//		"path" : ""
+			//	}
+			//}
 		]
 	}
 }

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Threading;
-using System.Collections.Concurrent;
 using Intrinio;
 
 namespace SampleApp
@@ -9,65 +8,56 @@ namespace SampleApp
 	{
 		private static Client client = null;
 		private static Timer timer = null;
-		private static readonly ConcurrentDictionary<string, int> trades = new ConcurrentDictionary<string, int>(5, 1_500_000);
-		private static readonly ConcurrentDictionary<string, int> quotes = new ConcurrentDictionary<string, int>(5, 1_500_000);
-		private static int maxTradeCount = 0;
-		private static int maxQuoteCount = 0;
-		private static int openInterestCount = 0;
-		private static Trade maxCountTrade;
-		private static Quote maxCountQuote;
-		private static OpenInterest maxOpenInterest;
+		private static int tradeCount = 0;
+		private static int askCount = 0;
+		private static int bidCount = 0;
+		private static int oiCount = 0;
+		private static int blockCount = 0;
+		private static int sweepCount = 0;
+		private static int largeTradeCount = 0;
 
 		private static readonly object obj = new object();
 
 		static void OnQuote(Quote quote)
 		{
-			string key = quote.Symbol + ":" + quote.Type;
-			if (!quotes.ContainsKey(key))
+			if (quote.Type == QuoteType.Ask)
 			{
-				quotes[key] = 1;
+				Interlocked.Increment(ref askCount);
+			}
+			else if (quote.Type == QuoteType.Bid)
+			{
+				Interlocked.Increment(ref bidCount);
 			}
 			else
-			{
-				quotes[key]++;
-			}
-			if (quotes[key] > maxQuoteCount)
-			{
-				lock (obj)
-				{
-					maxQuoteCount++;
-					maxCountQuote = quote;
-				}
-			}
+            {
+				Client.Log("Invalid quote type detected: {0}", quote.Type);
+            }
 		}
 
 		static void OnTrade(Trade trade)
 		{
-			string key = trade.Symbol + ":trade";
-			if (!trades.ContainsKey(key))
-			{
-				trades[key] = 1;
-			}
-			else
-			{
-				trades[key]++;
-			}
-			if (trades[key] > maxTradeCount)
-			{
-				lock (obj)
-				{
-					maxTradeCount++;
-					maxCountTrade = trade;
-				}
-			}
+			Interlocked.Increment(ref tradeCount);
 		}
 
 		static void OnOpenInterest(OpenInterest openInterest)
 		{
-			openInterestCount++;
-			if (openInterest.OpenInterest > maxOpenInterest.OpenInterest)
-			{
-				maxOpenInterest = openInterest;
+			Interlocked.Increment(ref oiCount);
+		}
+
+		static void OnUnusualActivity(UnusualActivity unusualActivity)
+		{
+			if (unusualActivity.Type == UAType.Block)
+            {
+				Interlocked.Increment(ref blockCount);
+            } else if (unusualActivity.Type == UAType.Sweep)
+            {
+				Interlocked.Increment(ref sweepCount);
+            } else if (unusualActivity.Type == UAType.Large)
+            {
+				Interlocked.Increment(ref largeTradeCount);
+            } else
+            {
+				Client.Log("Invalid UA type detected: {0}", unusualActivity.Type);
 			}
 		}
 
@@ -75,19 +65,8 @@ namespace SampleApp
 		{
 			Client client = (Client) obj;
 			Tuple<Int64, Int64, int> stats = client.GetStats();
-			Client.Log("Data Messages = {0}, Text Messages = {1}, Queue Depth = {2}", stats.Item1, stats.Item2, stats.Item3);
-			if (maxTradeCount > 0)
-			{
-				Client.Log("Most active trade symbol: {0:l} ({1} updates)", maxCountTrade.Symbol, maxTradeCount);
-			}
-			if (maxQuoteCount > 0)
-			{
-				Client.Log("Most active quote symbol: {0:l}:{1} ({2} updates)", maxCountQuote.Symbol, maxCountQuote.Type, maxQuoteCount);
-			}
-			if (openInterestCount > 0)
-			{
-				Client.Log("{0} open interest updates. Highest open interest symbol: {1:l} ({2})", openInterestCount, maxOpenInterest.Symbol, maxOpenInterest.OpenInterest);
-			}
+			Client.Log("CLIENT STATS - Data Messages = {0}, Text Messages = {1}, Queue Depth = {2}", stats.Item1, stats.Item2, stats.Item3);
+			Client.Log("PROGRAM STATS - Trades = {0}, Asks = {1}, Bids = {2}, OIs = {3}, Blocks = {4}, Sweeps = {5}, Large Trades = {6}", tradeCount, askCount, bidCount, oiCount, blockCount, sweepCount, largeTradeCount);
 		}
 
 		static void Cancel(object sender, ConsoleCancelEventArgs args)
@@ -101,9 +80,29 @@ namespace SampleApp
 		static void Main(string[] args)
 		{
 			Client.Log("Starting sample app");
-			client = new Client(OnTrade, OnQuote, OnOpenInterest);
+
+			// Register only the callbacks that you want.
+			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
+			client = new Client(onTrade: OnTrade, onQuote: OnQuote, onOpenInterest: OnOpenInterest, onUnusualActivity: OnUnusualActivity);
+			
 			timer = new Timer(TimerCallback, client, 10000, 10000);
-			client.Join();
+
+			// Use this to subscribe to a static list of symbols (option contracts) provided in config.json
+			//client.Join();
+
+			// Use this to subscribe to the entire univers of symbols (option contracts). This requires special permission.
+			//client.JoinLobby();
+
+			// Use this to subscribe, dynamically, to an option chain (all option contracts for a given underlying symbol).
+			//client.Join("AAPL");
+
+			// Use this to subscribe, dynamically, to a specific option contract.
+			//client.Join("AAP___230616P00250000");
+
+			// Use this to subscribe, dynamically, a list of specific option contracts or option chains.
+			//string[] clients = { "GOOG__220408C02870000", "MSFT__220408C00315000", "AAPL__220414C00180000", "TSLA", "GE" };
+            //client.Join(clients);
+
 			Console.CancelKeyPress += new ConsoleCancelEventHandler(Cancel);
 		}		
 	}

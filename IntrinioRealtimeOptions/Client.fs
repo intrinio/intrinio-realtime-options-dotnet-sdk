@@ -2,8 +2,8 @@
 
 open Serilog
 open System
-open System.IO
-open System.Net
+open System.Runtime.InteropServices
+open System.Net.Http
 open System.Text
 open System.Text.Json
 open System.Collections.Concurrent
@@ -36,12 +36,15 @@ type internal WebSocketState(ws: WebSocket) =
 
     member _.Reset() : unit = lastReset <- DateTime.Now
 
-type Client(onTrade : Action<Trade>, onQuote : Action<Quote>, onOpenInterest : Action<OpenInterest>) =
+type Client(
+    [<Optional; DefaultParameterValue(null:Action<Trade>)>] onTrade: Action<Trade>,
+    [<Optional; DefaultParameterValue(null:Action<Quote>)>] onQuote : Action<Quote>,
+    [<Optional; DefaultParameterValue(null:Action<OpenInterest>)>] onOpenInterest: Action<OpenInterest>,
+    [<Optional; DefaultParameterValue(null:Action<UnusualActivity>)>] onUnusualActivity: Action<UnusualActivity>) =
     let [<Literal>] heartbeatMessage : string = "{\"topic\":\"phoenix\",\"event\":\"heartbeat\",\"payload\":{},\"ref\":null}"
     let [<Literal>] heartbeatResponse : string = "{\"topic\":\"phoenix\",\"ref\":null,\"payload\":{\"status\":\"ok\",\"response\":{}},\"event\":\"phx_reply\"}"
     let [<Literal>] errorResponse : string = "\"status\":\"error\""
     let selfHealBackoffs : int[] = [| 10_000; 30_000; 60_000; 300_000; 600_000 |]
-
     let config = LoadConfig()
     let tLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let wsLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
@@ -49,10 +52,16 @@ type Client(onTrade : Action<Trade>, onQuote : Action<Quote>, onOpenInterest : A
     let mutable wsStates : WebSocketState[] = Array.empty<WebSocketState>
     let mutable dataMsgCount : int64 = 0L
     let mutable textMsgCount : int64 = 0L
-    let channels : HashSet<(string*bool)> = new HashSet<(string*bool)>()
+    let channels : HashSet<string> = new HashSet<string>()
     let ctSource : CancellationTokenSource = new CancellationTokenSource()
     let data : BlockingCollection<byte[]> = new BlockingCollection<byte[]>(new ConcurrentQueue<byte[]>())
     let mutable tryReconnect : (int -> unit -> unit) = fun (_:int) () -> ()
+    let httpClient : HttpClient = new HttpClient()
+
+    let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
+    let useOnQuote : bool = not (obj.ReferenceEquals(onQuote,null))
+    let useOnOI : bool = not (obj.ReferenceEquals(onOpenInterest,null))
+    let useOnUA : bool = not (obj.ReferenceEquals(onUnusualActivity,null))
 
     let allReady() : bool = 
         wsLock.EnterReadLock()
@@ -108,25 +117,47 @@ type Client(onTrade : Action<Trade>, onQuote : Action<Quote>, onOpenInterest : A
             Timestamp = BitConverter.ToDouble(bytes.Slice(26, 8))
         }
 
+    let parseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
+        {
+            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
+            Type = enum<UAType> (int32 (bytes.Item(21)))
+            Sentiment = enum<UASentiment> (int32 (bytes.Item(22)))
+            TotalValue = BitConverter.ToSingle(bytes.Slice(23, 4))
+            TotalSize = BitConverter.ToUInt32(bytes.Slice(27, 4))
+            AveragePrice = BitConverter.ToSingle(bytes.Slice(31, 4))
+            AskAtExecution = BitConverter.ToSingle(bytes.Slice(35, 4))
+            BidAtExecution = BitConverter.ToSingle(bytes.Slice(39, 4))
+            PriceAtExecution = BitConverter.ToSingle(bytes.Slice(43, 4))
+            Timestamp = BitConverter.ToDouble(bytes.Slice(47, 8))
+        }
+
     let parseSocketMessage (bytes: byte[], startIndex: byref<int>) : unit =
-        let msgType = enum<MessageType> (int32 bytes.[startIndex + 21])
-        match msgType with
-        | MessageType.Trade -> 
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 50)
-            let trade: Trade = parseTrade(chunk)
-            startIndex <- startIndex + 50
-            trade |> onTrade.Invoke
-        | MessageType.Ask | MessageType.Bid -> 
+        let msgType : int = int32 bytes.[startIndex + 21]
+        if ((msgType = 1) || (msgType = 2))
+        then 
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 42)
             let quote: Quote = parseQuote(chunk)
             startIndex <- startIndex + 42
-            quote |> onQuote.Invoke
-        | MessageType.OpenInterest -> 
+            if useOnQuote then onQuote.Invoke(quote)
+        elif (msgType = 0)
+        then
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 50)
+            let trade: Trade = parseTrade(chunk)
+            startIndex <- startIndex + 50
+            if useOnTrade then onTrade.Invoke(trade)
+        elif (msgType > 3)
+        then
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 55)
+            let ua: UnusualActivity = parseUnusualActivity(chunk)
+            startIndex <- startIndex + 55
+            if useOnUA then onUnusualActivity.Invoke(ua)
+        elif (msgType = 3)
+        then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 34)
             let openInterest = parseOpenInterest(chunk)
             startIndex <- startIndex + 34
-            openInterest |> onOpenInterest.Invoke
-        | _ -> Log.Warning("Invalid MessageType: {0}", (int32 bytes.[startIndex + 21]))
+            if useOnOI then onOpenInterest.Invoke(openInterest)
+        else Log.Warning("Invalid MessageType: {0}", msgType)
 
     let heartbeatFn () =
         let ct = ctSource.Token
@@ -172,31 +203,30 @@ type Client(onTrade : Action<Trade>, onQuote : Action<Quote>, onOpenInterest : A
 
     let trySetToken() : bool =
         Log.Information("Authorizing...")
-        try
-            let authUrl : string = getAuthUrl()
-            HttpWebRequest.Create(authUrl).GetResponse() :?> HttpWebResponse
-            |> fun response ->
-                match response.StatusCode with
-                | HttpStatusCode.OK ->
-                    let stream : Stream = response.GetResponseStream()
-                    let reader : StreamReader = new StreamReader(stream, Encoding.UTF8)
-                    let _token : string = reader.ReadToEnd()
+        let authUrl : string = getAuthUrl()
+        async {
+            try
+                let! response = httpClient.GetAsync(authUrl) |> Async.AwaitTask
+                if (response.IsSuccessStatusCode)
+                then
+                    let! _token = response.Content.ReadAsStringAsync() |> Async.AwaitTask
                     Interlocked.Exchange(&token, (_token, DateTime.Now)) |> ignore
                     Log.Information("Authorization successful")
-                    true
-                | _ ->
-                    Log.Warning("Authorization Failure {0}: The authorization key you provided is likely incorrect.", response.StatusCode.ToString())
-                    false
-        with
-        | :? WebException ->
-            Log.Error("Authorization Failure. The authorization server is likey offline.")
-            false
-        | :? IOException ->
-            Log.Error("Authorization Failure. Please check your network connection.")
-            false
-        | _ as exn ->
-            Log.Error("Unidentified Authorization Failure: {0}:{1}", exn.GetType(), exn.Message)
-            false
+                    return true
+                else
+                    Log.Warning("Authorization Failure. Authorization server status code = {0}", response.StatusCode) 
+                    return false
+            with
+            | :? System.InvalidOperationException as exn ->
+                Log.Error("Authorization Failure (bad URI): {0:l}", exn.Message)
+                return false
+            | :? System.Net.Http.HttpRequestException as exn ->
+                Log.Error("Authoriztion Failure (bad network connection): {0:l}", exn.Message)
+                return false
+            | :? System.Threading.Tasks.TaskCanceledException as exn ->
+                Log.Error("Authorization Failure (timeout): {0:l}", exn.Message)
+                return false
+        } |> Async.RunSynchronously
 
     let getToken() : string =
         tLock.EnterUpgradeableReadLock()
@@ -224,10 +254,15 @@ type Client(onTrade : Action<Trade>, onQuote : Action<Quote>, onOpenInterest : A
         finally wsLock.ExitWriteLock()
         if channels.Count > 0
         then
-            channels |> Seq.iter (fun (symbol: string, tradesOnly:bool) ->
-                let lastOnly : string = if tradesOnly then "true" else "false" 
-                let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\",\"last_only\":\"" + lastOnly + "\",\"payload\":{},\"ref\":null}"
-                Log.Information("Websocket {0} - Joining channel: {1:l} (trades only = {2:l})", index, symbol, lastOnly)
+            channels |> Seq.iter (fun (symbol: string) ->
+                let sb : StringBuilder = new StringBuilder()
+                if useOnTrade then sb.Append(",\"trade_data\":\"true\"") |> ignore
+                if useOnQuote then sb.Append(",\"quote_data\":\"true\"") |> ignore
+                if useOnOI then sb.Append(",\"open_interest_data\":\"true\"") |> ignore
+                if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
+                let subscriptionSelection : string = sb.ToString()
+                let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
+                Log.Information("Websocket {0} - Joining channel: {1:l} ({2:l})", index, symbol, subscriptionSelection.TrimStart(','))
                 wsStates.[index].WebSocket.Send(message) )
 
     let onClose (index : int) (_ : EventArgs) : unit =
@@ -314,27 +349,40 @@ type Client(onTrade : Action<Trade>, onQuote : Action<Quote>, onOpenInterest : A
         finally wsLock.ExitWriteLock()
         wsStates |> Array.iter (fun (wss: WebSocketState) -> wss.WebSocket.Open())
 
-    let join(symbol: string, tradesOnly: bool) : unit =
-        let lastOnly : string = if tradesOnly then "true" else "false"
-        if channels.Add((symbol, tradesOnly))
-        then 
-            let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\",\"last_only\":\"" + lastOnly + "\",\"payload\":{},\"ref\":null}"
-            wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
-                Log.Information("Websocket {0} - Joining channel: {1:l} (trades only = {2:l})", index, symbol, lastOnly)
-                try wss.WebSocket.Send(message)
-                with _ -> channels.Remove((symbol, tradesOnly)) |> ignore )
+    let join(symbol: string) : unit =
+        if (((symbol = "lobby") || (symbol = "lobby_trades_only")) &&
+            ((config.Provider <> Provider.MANUAL_FIREHOSE) && (config.Provider <> Provider.OPRA_FIREHOSE)))
+        then Log.Warning("Only 'FIREHOSE' providers may join the lobby channel")
+        elif (((symbol <> "lobby") && (symbol <> "lobby_trades_only")) &&
+            ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE)))
+        then Log.Warning("'FIREHOSE' providers may only join the lobby channel")
+        else
+            if channels.Add(symbol)
+            then 
+                let sb : StringBuilder = new StringBuilder()
+                if useOnTrade then sb.Append(",\"trade_data\":\"true\"") |> ignore
+                if useOnQuote then sb.Append(",\"quote_data\":\"true\"") |> ignore
+                if useOnOI then sb.Append(",\"open_interest_data\":\"true\"") |> ignore
+                if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
+                let subscriptionSelection : string = sb.ToString()
+                let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
+                wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
+                    Log.Information("Websocket {0} - Joining channel: {1:l} ({2:l})", index, symbol, subscriptionSelection.TrimStart(','))
+                    try wss.WebSocket.Send(message)
+                    with _ -> channels.Remove(symbol) |> ignore )
 
-    let leave(symbol: string, tradesOnly: bool) : unit =
-        let lastOnly : string = if tradesOnly then "true" else "false"
-        if channels.Remove((symbol, tradesOnly))
+    let leave(symbol: string) : unit =
+        if channels.Remove(symbol)
         then 
-            let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_leave\",\"last_only\":\"" + lastOnly + "\",\"payload\":{},\"ref\":null}"
+            let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_leave\",\"payload\":{},\"ref\":null}"
             wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
-                Log.Information("Websocket {0} - Leaving channel: {1:l} (trades only = {2})", index, symbol, lastOnly)
+                Log.Information("Websocket {0} - Leaving channel: {1:l}", index, symbol)
                 try wss.WebSocket.Send(message)
                 with _ -> () )
 
     do
+        httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
+        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv2.0")
         tryReconnect <- fun (index:int) () ->
             let reconnectFn () : bool =
                 Log.Information("Websocket {0} - Reconnecting...", index)
@@ -356,54 +404,58 @@ type Client(onTrade : Action<Trade>, onQuote : Action<Quote>, onOpenInterest : A
         let _token : string = getToken()
         initializeWebSockets(_token)
 
-    new (onTrade : Action<Trade>, onQuote : Action<Quote>) =
-        Client(onTrade, onQuote, Action<OpenInterest>(fun (_:OpenInterest) -> ()))
-
-    new (onTrade : Action<Trade>) =
-        Client(onTrade, Action<Quote>(fun (_:Quote) -> ()), Action<OpenInterest>(fun (_:OpenInterest) -> ()))
-
     member _.Join() : unit =
-        while not(allReady()) do Thread.Sleep(1000)
-        let symbolsToAdd : HashSet<(string*bool)> =
-            config.Symbols
-            |> Seq.map(fun (symbol:string) -> (symbol, config.TradesOnly))
-            |> fun (symbols:seq<(string*bool)>) -> new HashSet<(string*bool)>(symbols)
-        symbolsToAdd.ExceptWith(channels)
-        for symbol in symbolsToAdd do join(symbol)
+        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
+        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
+        else
+            while not(allReady()) do Thread.Sleep(1000)
+            let symbolsToAdd : HashSet<string> = new HashSet<string>(config.Symbols)
+            symbolsToAdd.ExceptWith(channels)
+            for symbol in symbolsToAdd do join(symbol)
 
-    member _.Join(symbol: string, ?tradesOnly: bool) : unit =
-        let t: bool =
-            match tradesOnly with
-            | Some(v:bool) -> v || config.TradesOnly
-            | None -> false || config.TradesOnly
-        while not(allReady()) do Thread.Sleep(1000)
-        if not (channels.Contains((symbol, t)))
-        then join(symbol, t)
+    member _.Join(symbol: string) : unit =
+        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
+        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
+        else
+            if not (String.IsNullOrWhiteSpace(symbol))
+            then
+                while not(allReady()) do Thread.Sleep(1000)
+                if not (channels.Contains(symbol))
+                then join(symbol)
 
-    member _.Join(symbols: string[], ?tradesOnly: bool) : unit =
-        let t: bool =
-            match tradesOnly with
-            | Some(v:bool) -> v || config.TradesOnly
-            | None -> false || config.TradesOnly
-        while not(allReady()) do Thread.Sleep(1000)
-        let symbolsToAdd : HashSet<(string*bool)> =
-            symbols
-            |> Seq.map(fun (symbol:string) -> (symbol,t))
-            |> fun (_symbols:seq<(string*bool)>) -> new HashSet<(string*bool)>(_symbols)
-        symbolsToAdd.ExceptWith(channels)
-        for symbol in symbolsToAdd do join(symbol)
+    member _.Join(symbols: string[]) : unit =
+        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
+        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
+        else
+            while not(allReady()) do Thread.Sleep(1000)
+            let symbolsToAdd : HashSet<string> = new HashSet<string>(symbols)
+            symbolsToAdd.ExceptWith(channels)
+            for symbol in symbolsToAdd do join(symbol)
+
+    member _.JoinLobby() : unit =
+        if ((config.Provider <> Provider.MANUAL_FIREHOSE) && (config.Provider <> Provider.OPRA_FIREHOSE))
+        then Log.Warning("Only 'FIREHOSE' providers may join the lobby channel")
+        elif (channels.Contains("lobby"))
+        then Log.Warning("This client has already joined the lobby channel")
+        else
+            while not (allReady()) do Thread.Sleep(1000)
+            join("lobby")
 
     member _.Leave() : unit =
         for channel in channels do leave(channel)
 
     member _.Leave(symbol: string) : unit =
-        let matchingChannels : seq<(string*bool)> = channels |> Seq.where (fun (_symbol:string, _:bool) -> _symbol = symbol)
-        for channel in matchingChannels do leave(channel)
+        if not (String.IsNullOrWhiteSpace(symbol))
+        then if channels.Contains(symbol) then leave(symbol)
 
     member _.Leave(symbols: string[]) : unit =
-        let _symbols : HashSet<string> = new HashSet<string>(symbols)
-        let matchingChannels : seq<(string*bool)> = channels |> Seq.where(fun (symbol:string, _:bool) -> _symbols.Contains(symbol))
+        let matchingChannels : HashSet<string> = new HashSet<string>(symbols)
+        matchingChannels.IntersectWith(channels)
         for channel in matchingChannels do leave(channel)
+
+    member _.LeaveLobby() : unit =
+        if (channels.Contains("lobby"))
+        then leave("lobby")
 
     member _.Stop() : unit =
         for channel in channels do leave(channel)
