@@ -49,13 +49,13 @@ type Client(
     let tLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let wsLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let mutable token : (string * DateTime) = (null, DateTime.Now)
-    let mutable wsStates : WebSocketState[] = Array.empty<WebSocketState>
+    let mutable wsState : WebSocketState = null
     let mutable dataMsgCount : int64 = 0L
     let mutable textMsgCount : int64 = 0L
     let channels : HashSet<string> = new HashSet<string>()
     let ctSource : CancellationTokenSource = new CancellationTokenSource()
     let data : BlockingCollection<byte[]> = new BlockingCollection<byte[]>(new ConcurrentQueue<byte[]>())
-    let mutable tryReconnect : (int -> unit -> unit) = fun (_:int) () -> ()
+    let mutable tryReconnect : (unit -> unit -> unit) = fun (_:int) () -> ()
     let httpClient : HttpClient = new HttpClient()
 
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
@@ -65,7 +65,7 @@ type Client(
 
     let allReady() : bool = 
         wsLock.EnterReadLock()
-        try wsStates |> Array.forall (fun (wss:WebSocketState) -> wss.IsReady)
+        try wsState.IsReady
         finally wsLock.ExitReadLock()
 
     let getAuthUrl () : string =
@@ -76,20 +76,12 @@ type Client(
         | Provider.MANUAL_FIREHOSE -> "http://" + config.IPAddress + ":8000/auth?api_key=" + config.ApiKey
         | _ -> failwith "Provider not specified!"
 
-    let getWebSocketUrl (token: string, index: int) : string =
+    let getWebSocketUrl (token: string) : string =
         match config.Provider with
         | Provider.OPRA -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token
-        | Provider.OPRA_FIREHOSE -> "wss://realtime-options-firehose.intrinio.com:800" + index.ToString() + "/socket/websocket?vsn=1.0.0&token=" + token
+        | Provider.OPRA_FIREHOSE -> "wss://realtime-options-firehose.intrinio.com:8000/socket/websocket?vsn=1.0.0&token=" + token
         | Provider.MANUAL -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token
-        | Provider.MANUAL_FIREHOSE -> "ws://" + config.IPAddress + ":800" + index.ToString() + "/socket/websocket?vsn=1.0.0&token=" + token
-        | _ -> failwith "Provider not specified!"
-
-    let getWebSocketCount () : int =
-        match config.Provider with
-        | Provider.OPRA -> 1
-        | Provider.OPRA_FIREHOSE -> 6
-        | Provider.MANUAL -> 1
-        | Provider.MANUAL_FIREHOSE -> 6
+        | Provider.MANUAL_FIREHOSE -> "ws://" + config.IPAddress + ":8000/socket/websocket?vsn=1.0.0&token=" + token
         | _ -> failwith "Provider not specified!"
 
     let parseTrade (bytes: ReadOnlySpan<byte>) : Trade =
@@ -167,9 +159,8 @@ type Client(
             Log.Debug("Sending heartbeat")
             wsLock.EnterReadLock()
             try
-                wsStates |> Array.iter (fun (wss: WebSocketState) ->
-                    if not(ct.IsCancellationRequested) && wss.IsReady
-                    then wss.WebSocket.Send(heartbeatMessage) )
+                if not(ct.IsCancellationRequested) && wsState.IsReady
+                then wsState.WebSocket.Send(heartbeatMessage)
             finally wsLock.ExitReadLock()
 
     let heartbeat : Thread = new Thread(new ThreadStart(heartbeatFn))
@@ -240,12 +231,12 @@ type Client(
                 fst token
         finally tLock.ExitUpgradeableReadLock()
 
-    let onOpen (index : int) (_ : EventArgs) : unit =
-        Log.Information("Websocket {0} - Connected", index)
+    let onOpen (_ : EventArgs) : unit =
+        Log.Information("Websocket - Connected")
         wsLock.EnterWriteLock()
         try
-            wsStates.[index].IsReady <- true
-            wsStates.[index].IsReconnecting <- false
+            wsState.IsReady <- true
+            wsState.IsReconnecting <- false
             if not heartbeat.IsAlive
             then heartbeat.Start()
             for thread in threads do
@@ -262,20 +253,20 @@ type Client(
                 if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
                 let subscriptionSelection : string = sb.ToString()
                 let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
-                Log.Information("Websocket {0} - Joining channel: {1:l} ({2:l})", index, symbol, subscriptionSelection.TrimStart(','))
-                wsStates.[index].WebSocket.Send(message) )
+                Log.Information("Websocket - Joining channel: {0:l} ({1:l})", symbol, subscriptionSelection.TrimStart(','))
+                wsState.WebSocket.Send(message) )
 
-    let onClose (index : int) (_ : EventArgs) : unit =
+    let onClose (_ : EventArgs) : unit =
         wsLock.EnterUpgradeableReadLock()
         try 
-            if not wsStates.[index].IsReconnecting
+            if not wsState.IsReconnecting
             then
-                Log.Information("Websocket {0} - Closed", index)
+                Log.Information("Websocket - Closed")
                 wsLock.EnterWriteLock()
-                try wsStates.[index].IsReady <- false
+                try wsState.IsReady <- false
                 finally wsLock.ExitWriteLock()
                 if (not ctSource.IsCancellationRequested)
-                then Task.Factory.StartNew(Action(tryReconnect(index))) |> ignore
+                then Task.Factory.StartNew(Action(tryReconnect())) |> ignore
         finally wsLock.ExitUpgradeableReadLock()
 
     let (|Closed|Refused|Unavailable|Other|) (input:exn) =
@@ -289,21 +280,21 @@ type Client(
         then Unavailable
         else Other
 
-    let onError (index : int) (args : SuperSocket.ClientEngine.ErrorEventArgs) : unit =
+    let onError (args : SuperSocket.ClientEngine.ErrorEventArgs) : unit =
         let exn = args.Exception
         match exn with
-        | Closed -> Log.Warning("Websocket {0} - Error - Connection failed", index)
-        | Refused -> Log.Warning("Websocket {0} - Error - Connection refused", index)
-        | Unavailable -> Log.Warning("Websocket {0} - Error - Server unavailable", index)
-        | _ -> Log.Error("Websocket {0} - Error - {1}:{2}", index, exn.GetType(), exn.Message)
+        | Closed -> Log.Warning("Websocket - Error - Connection failed")
+        | Refused -> Log.Warning("Websocket - Error - Connection refused")
+        | Unavailable -> Log.Warning("Websocket - Error - Server unavailable")
+        | _ -> Log.Error("Websocket - Error - {0}:{1}", exn.GetType(), exn.Message)
 
-    let onDataReceived (index : int) (args: DataReceivedEventArgs) : unit =
-        Log.Debug("Websocket {0} - Data received", index)
+    let onDataReceived (args: DataReceivedEventArgs) : unit =
+        Log.Debug("Websocket - Data received")
         Interlocked.Increment(&dataMsgCount) |> ignore
         data.Add(args.Data)
 
-    let onMessageReceived (index : int) (args : MessageReceivedEventArgs) : unit =
-        Log.Debug("Websocket {0} - Message received", index)
+    let onMessageReceived (args : MessageReceivedEventArgs) : unit =
+        Log.Debug("Websocket - Message received")
         Interlocked.Increment(&textMsgCount) |> ignore
         if args.Message = heartbeatResponse then Log.Debug("Heartbeat response received")
         elif args.Message.Contains(errorResponse)
@@ -316,38 +307,36 @@ type Client(
                     .GetString()
             Log.Error("Error received: {0:l}", errorMessage)
 
-    let resetWebSocket(index: int, token: string) : unit =
-        Log.Information("Websocket {0} - Resetting", index)
-        let wsUrl : string = getWebSocketUrl(token, index)
+    let resetWebSocket(token: string) : unit =
+        Log.Information("Websocket - Resetting")
+        let wsUrl : string = getWebSocketUrl(token)
         let ws : WebSocket = new WebSocket(wsUrl)
-        ws.Opened.Add(onOpen index)
-        ws.Closed.Add(onClose index)
-        ws.Error.Add(onError index)
-        ws.DataReceived.Add(onDataReceived index)
-        ws.MessageReceived.Add(onMessageReceived index)
+        ws.Opened.Add(onOpen)
+        ws.Closed.Add(onClose)
+        ws.Error.Add(onError)
+        ws.DataReceived.Add(onDataReceived)
+        ws.MessageReceived.Add(onMessageReceived)
         wsLock.EnterWriteLock()
         try
-            wsStates.[index].WebSocket <- ws
-            wsStates.[index].Reset()
+            wsState.WebSocket <- ws
+            wsState.Reset()
         finally wsLock.ExitWriteLock()
         ws.Open()
 
     let initializeWebSockets(token: string) : unit =
         wsLock.EnterWriteLock()
         try
-            let wsCount : int = getWebSocketCount()
-            wsStates <- Array.init wsCount (fun (index:int) ->
-                Log.Information("Websocket {0} - Connecting...", index)
-                let wsUrl : string = getWebSocketUrl(token, index)
-                let ws: WebSocket = new WebSocket(wsUrl)
-                ws.Opened.Add(onOpen index)
-                ws.Closed.Add(onClose index)
-                ws.Error.Add(onError index)
-                ws.DataReceived.Add(onDataReceived index)
-                ws.MessageReceived.Add(onMessageReceived index)
-                new WebSocketState(ws) )
+            Log.Information("Websocket - Connecting...")
+            let wsUrl : string = getWebSocketUrl(token)
+            let ws: WebSocket = new WebSocket(wsUrl)
+            ws.Opened.Add(onOpen)
+            ws.Closed.Add(onClose)
+            ws.Error.Add(onError)
+            ws.DataReceived.Add(onDataReceived)
+            ws.MessageReceived.Add(onMessageReceived)
+            wsState <- new WebSocketState(ws)                
         finally wsLock.ExitWriteLock()
-        wsStates |> Array.iter (fun (wss: WebSocketState) -> wss.WebSocket.Open())
+        wsState.WebSocket.Open()
 
     let join(symbol: string) : unit =
         if (((symbol = "lobby") || (symbol = "lobby_trades_only")) &&
@@ -366,38 +355,36 @@ type Client(
                 if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
                 let subscriptionSelection : string = sb.ToString()
                 let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
-                wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
-                    Log.Information("Websocket {0} - Joining channel: {1:l} ({2:l})", index, symbol, subscriptionSelection.TrimStart(','))
-                    try wss.WebSocket.Send(message)
-                    with _ -> channels.Remove(symbol) |> ignore )
+                Log.Information("Websocket - Joining channel: {0:l} ({1:l})", symbol, subscriptionSelection.TrimStart(','))
+                try wsState.WebSocket.Send(message)
+                with _ -> channels.Remove(symbol) |> ignore
 
     let leave(symbol: string) : unit =
         if channels.Remove(symbol)
         then 
             let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_leave\",\"payload\":{},\"ref\":null}"
-            wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
-                Log.Information("Websocket {0} - Leaving channel: {1:l}", index, symbol)
-                try wss.WebSocket.Send(message)
-                with _ -> () )
+            Log.Information("Websocket - Leaving channel: {0:l}", symbol)
+            try wsState.WebSocket.Send(message)
+            with _ -> ()
 
     do
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
         httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv2.0")
-        tryReconnect <- fun (index:int) () ->
+        tryReconnect <- fun () () ->
             let reconnectFn () : bool =
-                Log.Information("Websocket {0} - Reconnecting...", index)
-                if wsStates.[index].IsReady then true
+                Log.Information("Websocket - Reconnecting...")
+                if wsState.IsReady then true
                 else
                     wsLock.EnterWriteLock()
-                    try wsStates.[index].IsReconnecting <- true
+                    try wsState.IsReconnecting <- true
                     finally wsLock.ExitWriteLock()
-                    if (DateTime.Now - TimeSpan.FromDays(5.0)) > (wsStates.[index].LastReset)
+                    if (DateTime.Now - TimeSpan.FromDays(5.0)) > (wsState.LastReset)
                     then
                         let _token : string = getToken()
-                        resetWebSocket(index, _token)
+                        resetWebSocket(_token)
                     else
                         try
-                            wsStates.[index].WebSocket.Open()
+                            wsState.WebSocket.Open()
                         with _ -> ()
                     false
             doBackoff(reconnectFn)
@@ -461,12 +448,11 @@ type Client(
         for channel in channels do leave(channel)
         Thread.Sleep(1000)
         wsLock.EnterWriteLock()
-        try wsStates |> Array.iter (fun (wss:WebSocketState) -> wss.IsReady <- false)
+        try wsState.IsReady <- false
         finally wsLock.ExitWriteLock()
         ctSource.Cancel ()
-        wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
-            Log.Information("Websocket {0} - Closing...", index);
-            wss.WebSocket.Close())
+        Log.Information("Websocket - Closing...");
+        wsState.WebSocket.Close()
         heartbeat.Join()
         for thread in threads do thread.Join()
         Log.Information("Stopped")
