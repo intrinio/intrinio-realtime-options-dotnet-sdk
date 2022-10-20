@@ -70,19 +70,19 @@ type Client(
 
     let getAuthUrl () : string =
         match config.Provider with
-        | Provider.OPRA -> "https://realtime-options.intrinio.com/auth?api_key=" + config.ApiKey
-        | Provider.OPRA_FIREHOSE -> "https://realtime-options-firehose.intrinio.com:8000/auth?api_key=" + config.ApiKey
-        | Provider.MANUAL -> "http://" + config.IPAddress + "/auth?api_key=" + config.ApiKey
-        | Provider.MANUAL_FIREHOSE -> "http://" + config.IPAddress + ":8000/auth?api_key=" + config.ApiKey
+        | Provider.OPRA
+        | Provider.OPRA_FIREHOSE -> "https://realtime-options.intrinio.com/auth?api_key=" + config.ApiKey
+        | Provider.MANUAL
+        | Provider.MANUAL_FIREHOSE -> "http://" + config.IPAddress + "/auth?api_key=" + config.ApiKey
         | _ -> failwith "Provider not specified!"
 
     let getWebSocketUrl (token: string) : string =
         match config.Provider with
-        | Provider.OPRA -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token
-        | Provider.OPRA_FIREHOSE -> "wss://realtime-options-firehose.intrinio.com:8000/socket/websocket?vsn=1.0.0&token=" + token
-        | Provider.MANUAL -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token
-        | Provider.MANUAL_FIREHOSE -> "ws://" + config.IPAddress + ":8000/socket/websocket?vsn=1.0.0&token=" + token
-        | _ -> failwith "Provider not specified!"
+          | Provider.OPRA
+          | Provider.OPRA_FIREHOSE -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token
+          | Provider.MANUAL 
+          | Provider.MANUAL_FIREHOSE -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token
+          | _ -> failwith "Provider not specified!"
 
     let parseTrade (bytes: ReadOnlySpan<byte>) : Trade =
         {
