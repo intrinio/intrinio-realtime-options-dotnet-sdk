@@ -49,13 +49,13 @@ type Client(
     let tLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let wsLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let mutable token : (string * DateTime) = (null, DateTime.Now)
-    let mutable wsState : WebSocketState = null
+    let mutable wsState: WebSocketState = new WebSocketState(null)
     let mutable dataMsgCount : int64 = 0L
     let mutable textMsgCount : int64 = 0L
     let channels : HashSet<string> = new HashSet<string>()
     let ctSource : CancellationTokenSource = new CancellationTokenSource()
     let data : BlockingCollection<byte[]> = new BlockingCollection<byte[]>(new ConcurrentQueue<byte[]>())
-    let mutable tryReconnect : (unit -> unit -> unit) = fun (_:int) () -> ()
+    let mutable tryReconnect : (unit -> unit) = fun () -> ()
     let httpClient : HttpClient = new HttpClient()
 
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
@@ -266,7 +266,7 @@ type Client(
                 try wsState.IsReady <- false
                 finally wsLock.ExitWriteLock()
                 if (not ctSource.IsCancellationRequested)
-                then Task.Factory.StartNew(Action(tryReconnect())) |> ignore
+                then Task.Factory.StartNew(tryReconnect) |> ignore
         finally wsLock.ExitUpgradeableReadLock()
 
     let (|Closed|Refused|Unavailable|Other|) (input:exn) =
@@ -370,7 +370,7 @@ type Client(
     do
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
         httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv2.0")
-        tryReconnect <- fun () () ->
+        tryReconnect <- fun () ->
             let reconnectFn () : bool =
                 Log.Information("Websocket - Reconnecting...")
                 if wsState.IsReady then true
