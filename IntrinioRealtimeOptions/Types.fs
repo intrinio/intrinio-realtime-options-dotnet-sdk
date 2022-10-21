@@ -23,10 +23,11 @@ type QuoteType =
 /// Timestamp: the time that the trade was executed (a unix timestamp representing the number of milliseconds (or better) since the unix epoch) </para>
 type [<Struct>] Quote =
     {
-        Type : QuoteType 
         Symbol : string
-        Price : float
-        Size : uint32
+        AskPrice : single
+        AskSize : uint32
+        BidPrice : single
+        BidSize : uint32
         Timestamp : float
     }
 
@@ -127,7 +128,7 @@ type [<Struct>] UnusualActivity =
         AveragePrice : single
         AskAtExecution : single
         BidAtExecution : single
-        PriceAtExecution : single
+        PriceAtExecution : float
         Timestamp : double
     }
     member this.GetStrikePrice() : float32 =

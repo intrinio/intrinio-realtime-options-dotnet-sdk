@@ -125,12 +125,16 @@ type Client(
         }
 
     let parseQuote (bytes: ReadOnlySpan<byte>) : Quote =
+        let priceType = enum<PriceType> (int32 (bytes.Item(21))) // maxSymbolSize - 1 + 1 + typeSize(1)
         {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
-            Type = enum<QuoteType> (int32 (bytes.Item(21)))
-            Price = BitConverter.ToDouble(bytes.Slice(22, 8))
-            Size = BitConverter.ToUInt32(bytes.Slice(30, 4))
-            Timestamp = BitConverter.ToDouble(bytes.Slice(34, 8))
+            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, maxSymbolSize))
+            //Type positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
+            //PriceType positionally goes here
+            AskPrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(22, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1)
+            AskSize = BitConverter.ToUInt32(bytes.Slice(26, 4)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1) + AskPriceSize(4)
+            BidPrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(30, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4)
+            BidSize = BitConverter.ToUInt32(bytes.Slice(34, 4)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4) + BidPriceSize(4)
+            Timestamp = getSecondsSinceUnixEpoch(BitConverter.ToUInt64(bytes.Slice(38, 8))) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4) + BidPriceSize(4) + BidSizeSize(4)
         }
 
     let parseRefresh (bytes: ReadOnlySpan<byte>) : Refresh =
@@ -160,12 +164,12 @@ type Client(
             AveragePrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(36, 4)), priceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4)
             AskAtExecution = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(40, 4)), priceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4)
             BidAtExecution = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(44, 4)), priceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4)
-            PriceAtExecution = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(48, 4)), underlyingPriceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4)
+            PriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(48, 4)), underlyingPriceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4)
             Timestamp = getSecondsSinceUnixEpoch(BitConverter.ToUInt64(bytes.Slice(52, 8))) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4) + PriceAtExecutionSize(4)
         }
 
     let parseSocketMessage (bytes: byte[], startIndex: byref<int>) : unit =
-        let msgType : int = int32 bytes.[startIndex + maxSymbolSize]
+        let msgType : int = int32 bytes.[startIndex + maxSymbolSize] //This works because it's startIndex + maxSymbolSize - 1 (zero based) + 1 (size of type) 
         match msgType with
         | 0 -> //Trade
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, tradeMessageSize)
