@@ -56,8 +56,8 @@ type Client(
     let wsLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let mutable token : (string * DateTime) = (null, DateTime.Now)
     let mutable wsState: WebSocketState = new WebSocketState(null)
-    let mutable dataMsgCount : int64 = 0L
-    let mutable textMsgCount : int64 = 0L
+    let mutable dataMsgCount : uint64 = 0UL
+    let mutable textMsgCount : uint64 = 0UL
     let channels : HashSet<string> = new HashSet<string>()
     let ctSource : CancellationTokenSource = new CancellationTokenSource()
     let data : BlockingCollection<byte[]> = new BlockingCollection<byte[]>(new ConcurrentQueue<byte[]>())
@@ -510,7 +510,7 @@ type Client(
         for thread in threads do thread.Join()
         Log.Information("Stopped")
 
-    member _.GetStats() : (int64 * int64 * int) = (Interlocked.Read(&dataMsgCount), Interlocked.Read(&textMsgCount), data.Count)
+    member _.GetStats() : (uint64 * uint64 * int) = (Interlocked.Read(&dataMsgCount), Interlocked.Read(&textMsgCount), data.Count)
 
     static member Log(messageTemplate:string, [<ParamArray>] propertyValues:obj[]) = Log.Information(messageTemplate, propertyValues)
 

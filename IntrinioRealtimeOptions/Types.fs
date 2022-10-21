@@ -15,12 +15,13 @@ type QuoteType =
     | Ask = 1
     | Bid = 2
 
-/// A 'Quote' is the standard unit of data representing an individual market event. A quote object will be returned for every market transaction.
-/// Type: the type of the quote - 0, 1, or 2 for 'trade', 'ask', or 'bid', respectively (will always be 0/'trade' for firehose data)
-/// Symbol: the id of the option contract (e.g. AAPL__210305C00070000)
-/// Price: the dollar price of the last trade </para>
-/// Volume: the number of contacts that were exchanged in the last trade </para>
-/// Timestamp: the time that the trade was executed (a unix timestamp representing the number of milliseconds (or better) since the unix epoch) </para>
+/// A 'Quote' is a unit of data representing an individual market bid or ask event.
+/// Symbol: the id of the option contract (e.g. AAPL_210305C00070000)
+/// AskPrice: the dollar price of the last ask
+/// AskSize: the number of contacts for the ask
+/// BidPrice: the dollars price of the last bid.
+/// BidSize: the number of contacts for the bid
+/// Timestamp: the time that the trade was executed (a unix timestamp representing the number of seconds (or better) since the unix epoch)
 type [<Struct>] Quote =
     {
         Symbol : string
@@ -46,10 +47,11 @@ type [<Struct>] Quote =
 
     override this.ToString() : string =
         "Quote (" +
-        "Type: " + QuoteType.GetName(this.Type) +
         ", Symbol: " + this.Symbol +
-        ", Price: " + this.Price.ToString("f2") +
-        ", Size: " + this.Size.ToString() +
+        ", AskPrice: " + this.AskPrice.ToString("f2") +
+        ", AskSize: " + this.AskSize.ToString() +
+        ", BidPrice: " + this.BidPrice.ToString("f2") +
+        ", BidSize: " + this.BidSize.ToString() +
         ", Timestamp: " + this.Timestamp.ToString("f6") +
         ")"
 
