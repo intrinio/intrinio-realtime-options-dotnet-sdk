@@ -15,13 +15,15 @@ type QuoteType =
     | Ask = 1
     | Bid = 2
 
+/// <summary>
 /// A 'Quote' is a unit of data representing an individual market bid or ask event.
-/// Symbol: the id of the option contract (e.g. AAPL_210305C00070000)
-/// AskPrice: the dollar price of the last ask
-/// AskSize: the number of contacts for the ask
-/// BidPrice: the dollars price of the last bid.
-/// BidSize: the number of contacts for the bid
-/// Timestamp: the time that the trade was executed (a unix timestamp representing the number of seconds (or better) since the unix epoch)
+/// </summary>
+/// <param name="Symbol">The id of the option contract (e.g. AAPL_210305C00070000).</param>
+/// <param name="AskPrice">The dollar price of the last ask.</param>
+/// <param name="AskSize">The number of contacts for the ask.</param>
+/// <param name="BidPrice">The dollars price of the last bid.</param>
+/// <param name="BidSize">The number of contacts for the bid.</param>
+/// <param name="Timestamp">The time that the trade was executed (a unix timestamp representing the number of seconds (or better) since the unix epoch).</param>
 type [<Struct>] Quote =
     {
         Symbol : string
@@ -37,23 +39,22 @@ type [<Struct>] Quote =
         let part : float32 = (float32 (uint8 this.Symbol.[18] - uint8 '0')) * 0.1f + (float32 (uint8 this.Symbol.[19] - uint8 '0')) * 0.01f + (float32 (uint8 this.Symbol.[20] - uint8 '0')) * 0.001f
         (float32 whole) + part
 
-    member this.IsPut() : bool = this.Symbol.[12] = 'P'
+    member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
 
-    member this.IsCall() : bool = this.Symbol.[12] = 'C'
+    member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_'), 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, 6).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
 
     override this.ToString() : string =
-        "Quote (" +
-        ", Symbol: " + this.Symbol +
-        ", AskPrice: " + this.AskPrice.ToString("f2") +
-        ", AskSize: " + this.AskSize.ToString() +
-        ", BidPrice: " + this.BidPrice.ToString("f2") +
-        ", BidSize: " + this.BidSize.ToString() +
-        ", Timestamp: " + this.Timestamp.ToString("f6") +
-        ")"
+        sprintf "Quote (Symbol: %s, AskPrice: %s, AskSize: %s, BidPrice: %s, BidSize: %s, Timestamp: %s)"
+            this.Symbol
+            (this.AskPrice.ToString("f2"))
+            (this.AskSize.ToString())
+            (this.BidPrice.ToString("f2"))
+            (this.BidSize.ToString())
+            (this.Timestamp.ToString("f6"))
 
 type [<Struct>] Trade =
     {
