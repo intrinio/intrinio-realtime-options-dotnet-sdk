@@ -11,10 +11,11 @@ namespace SampleApp
 		private static int tradeCount = 0;
 		private static int askCount = 0;
 		private static int bidCount = 0;
-		private static int oiCount = 0;
+		private static int refreshCount = 0;
 		private static int blockCount = 0;
 		private static int sweepCount = 0;
 		private static int largeTradeCount = 0;
+		private static int goldenCount = 0;
 
 		private static readonly object obj = new object();
 
@@ -39,9 +40,9 @@ namespace SampleApp
 			Interlocked.Increment(ref tradeCount);
 		}
 
-		static void OnOpenInterest(OpenInterest openInterest)
+		static void OnRefresh(Refresh refresh)
 		{
-			Interlocked.Increment(ref oiCount);
+			Interlocked.Increment(ref refreshCount);
 		}
 
 		static void OnUnusualActivity(UnusualActivity unusualActivity)
@@ -55,7 +56,10 @@ namespace SampleApp
             } else if (unusualActivity.Type == UAType.Large)
             {
 				Interlocked.Increment(ref largeTradeCount);
-            } else
+            } else if (unusualActivity.Type == UAType.Golden)
+			{
+				Interlocked.Increment(ref goldenCount);
+			} else
             {
 				Client.Log("Invalid UA type detected: {0}", unusualActivity.Type);
 			}
@@ -66,7 +70,7 @@ namespace SampleApp
 			Client client = (Client) obj;
 			Tuple<Int64, Int64, int> stats = client.GetStats();
 			Client.Log("CLIENT STATS - Data Messages = {0}, Text Messages = {1}, Queue Depth = {2}", stats.Item1, stats.Item2, stats.Item3);
-			Client.Log("PROGRAM STATS - Trades = {0}, Asks = {1}, Bids = {2}, OIs = {3}, Blocks = {4}, Sweeps = {5}, Large Trades = {6}", tradeCount, askCount, bidCount, oiCount, blockCount, sweepCount, largeTradeCount);
+			Client.Log("PROGRAM STATS - Trades = {0}, Asks = {1}, Bids = {2}, OIs = {3}, Blocks = {4}, Sweeps = {5}, Large Trades = {6}, Golden = {7}", tradeCount, askCount, bidCount, refreshCount, blockCount, sweepCount, largeTradeCount, goldenCount);
 		}
 
 		static void Cancel(object sender, ConsoleCancelEventArgs args)
@@ -83,7 +87,7 @@ namespace SampleApp
 
 			// Register only the callbacks that you want.
 			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
-			client = new Client(onTrade: OnTrade, onQuote: OnQuote, onOpenInterest: OnOpenInterest, onUnusualActivity: OnUnusualActivity);
+			client = new Client(onTrade: OnTrade, onQuote: OnQuote, onOpenInterest: OnRefresh, onUnusualActivity: OnUnusualActivity);
 			
 			timer = new Timer(TimerCallback, client, 10000, 10000);
 

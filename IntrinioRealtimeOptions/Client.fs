@@ -40,7 +40,7 @@ type internal WebSocketState(ws: WebSocket) =
 type Client(
     [<Optional; DefaultParameterValue(null:Action<Trade>)>] onTrade: Action<Trade>,
     [<Optional; DefaultParameterValue(null:Action<Quote>)>] onQuote : Action<Quote>,
-    [<Optional; DefaultParameterValue(null:Action<OpenInterest>)>] onOpenInterest: Action<OpenInterest>,
+    [<Optional; DefaultParameterValue(null:Action<Refresh>)>] onRefresh: Action<Refresh>,
     [<Optional; DefaultParameterValue(null:Action<UnusualActivity>)>] onUnusualActivity: Action<UnusualActivity>) =
     let [<Literal>] heartbeatMessage : string = "{\"topic\":\"phoenix\",\"event\":\"heartbeat\",\"payload\":{},\"ref\":null}"
     let [<Literal>] heartbeatResponse : string = "{\"topic\":\"phoenix\",\"ref\":null,\"payload\":{\"status\":\"ok\",\"response\":{}},\"event\":\"phx_reply\"}"
@@ -91,7 +91,7 @@ type Client(
     
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
     let useOnQuote : bool = not (obj.ReferenceEquals(onQuote,null))
-    let useOnOI : bool = not (obj.ReferenceEquals(onOpenInterest,null))
+    let useOnRefresh : bool = not (obj.ReferenceEquals(onRefresh,null))
     let useOnUA : bool = not (obj.ReferenceEquals(onUnusualActivity,null))
 
     let allReady() : bool = 
@@ -133,11 +133,17 @@ type Client(
             Timestamp = BitConverter.ToDouble(bytes.Slice(34, 8))
         }
 
-    let parseRefresh (bytes: ReadOnlySpan<byte>) : OpenInterest =
+    let parseRefresh (bytes: ReadOnlySpan<byte>) : Refresh =
+        let priceType = enum<PriceType> (int32 (bytes.Item(25))) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4)
         {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
-            OpenInterest = BitConverter.ToInt32(bytes.Slice(22, 4))
-            Timestamp = BitConverter.ToDouble(bytes.Slice(26, 8))
+            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, maxSymbolSize))
+            //Type positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
+            OpenInterest = BitConverter.ToUInt32(bytes.Slice(21, 4)) // maxSymbolSize - 1 + 1 + typeSize(1)
+            //price type positionally goes here
+            OpenPrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(26, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1)
+            ClosePrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(30, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1) + OpenPriceSize(4)
+            HighPrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(34, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1) + OpenPriceSize(4) + ClosePriceSize(4)
+            LowPrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(38, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1) + OpenPriceSize(4) + ClosePriceSize(4) + HighPriceSize(4)
         }
 
     let parseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
@@ -173,9 +179,9 @@ type Client(
             if useOnQuote then onQuote.Invoke(quote)
         | 2 -> //Refresh
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, refreshMessageSize)
-            let openInterest = parseRefresh(chunk)
+            let refresh = parseRefresh(chunk)
             startIndex <- startIndex + refreshMessageSize
-            if useOnOI then onOpenInterest.Invoke(openInterest)
+            if useOnRefresh then onRefresh.Invoke(refresh)
         | 3 //Block            
         | 4 //Sweep
         | 5 //Large
@@ -284,7 +290,7 @@ type Client(
                 let sb : StringBuilder = new StringBuilder()
                 if useOnTrade then sb.Append(",\"trade_data\":\"true\"") |> ignore
                 if useOnQuote then sb.Append(",\"quote_data\":\"true\"") |> ignore
-                if useOnOI then sb.Append(",\"open_interest_data\":\"true\"") |> ignore
+                if useOnRefresh then sb.Append(",\"refresh_data\":\"true\"") |> ignore
                 if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
                 let subscriptionSelection : string = sb.ToString()
                 let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
@@ -386,7 +392,7 @@ type Client(
                 let sb : StringBuilder = new StringBuilder()
                 if useOnTrade then sb.Append(",\"trade_data\":\"true\"") |> ignore
                 if useOnQuote then sb.Append(",\"quote_data\":\"true\"") |> ignore
-                if useOnOI then sb.Append(",\"open_interest_data\":\"true\"") |> ignore
+                if useOnRefresh then sb.Append(",\"refresh_data\":\"true\"") |> ignore
                 if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
                 let subscriptionSelection : string = sb.ToString()
                 let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"

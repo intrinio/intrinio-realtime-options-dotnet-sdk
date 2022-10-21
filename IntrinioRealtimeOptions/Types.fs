@@ -82,11 +82,14 @@ type [<Struct>] Trade =
         ", Timestamp: " + this.Timestamp.ToString("f6") +
         ")"
 
-type [<Struct>] OpenInterest =
+type [<Struct>] Refresh =
     {
         Symbol : string
-        OpenInterest : int32
-        Timestamp : float
+        OpenInterest : uint32
+        OpenPrice : single
+        ClosePrice : single
+        HighPrice : single
+        LowPrice : single
     }
 
 type UAType =
