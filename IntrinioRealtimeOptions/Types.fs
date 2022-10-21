@@ -2,6 +2,7 @@
 
 open System
 open System.Globalization
+open Intrinio
 
 type Provider =
     | NONE = 0
@@ -89,21 +90,36 @@ type [<Struct>] OpenInterest =
     }
 
 type UAType =
-    | Block = 4
-    | Sweep = 5
-    | Large = 6
+    | Block = 3
+    | Sweep = 4
+    | Large = 5
+    | Golden = 6
 
 type UASentiment =
     | Neutral = 0
     | Bullish = 1
     | Bearish = 2
-
+    
+type PriceType =
+    | One               = 0x00
+    | Ten               = 0x01
+    | Hundred           = 0x02
+    | Thousand          = 0x03
+    | TenThousand       = 0x04
+    | HundredThousand   = 0x05
+    | Million           = 0x06
+    | TenMillion        = 0x07
+    | HundredMillion    = 0x08
+    | Billion           = 0x09
+    | FiveHundredTwelve = 0x0A
+    | Zero              = 0x0F
+    
 type [<Struct>] UnusualActivity =
     {
         Symbol : string
         Type : UAType
         Sentiment : UASentiment
-        TotalValue : single
+        TotalValue : double
         TotalSize : uint32
         AveragePrice : single
         AskAtExecution : single

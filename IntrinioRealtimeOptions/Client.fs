@@ -1,5 +1,6 @@
 ﻿namespace Intrinio
 
+open Intrinio
 open Serilog
 open System
 open System.Runtime.InteropServices
@@ -45,6 +46,11 @@ type Client(
     let [<Literal>] heartbeatResponse : string = "{\"topic\":\"phoenix\",\"ref\":null,\"payload\":{\"status\":\"ok\",\"response\":{}},\"event\":\"phx_reply\"}"
     let [<Literal>] errorResponse : string = "\"status\":\"error\""
     let selfHealBackoffs : int[] = [| 10_000; 30_000; 60_000; 300_000; 600_000 |]
+    let maxSymbolSize : int = 20
+    let tradeMessageSize : int = 59
+    let quoteMessageSize : int = 46
+    let refreshMessageSize : int = 42
+    let unusualActivityMessageSize : int = 60
     let config = LoadConfig()
     let tLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let wsLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
@@ -57,7 +63,32 @@ type Client(
     let data : BlockingCollection<byte[]> = new BlockingCollection<byte[]>(new ConcurrentQueue<byte[]>())
     let mutable tryReconnect : (unit -> unit) = fun () -> ()
     let httpClient : HttpClient = new HttpClient()
-
+    
+    let getPriceTypeValue (priceType: PriceType) : uint64 =
+        match priceType with
+        | PriceType.One                 -> 1UL
+        | PriceType.Ten                 -> 10UL
+        | PriceType.Hundred             -> 100UL
+        | PriceType.Thousand            -> 1_000UL
+        | PriceType.TenThousand         -> 10_000UL
+        | PriceType.HundredThousand     -> 100_000UL
+        | PriceType.Million             -> 1_000_000UL
+        | PriceType.TenMillion          -> 10_000_000UL
+        | PriceType.HundredMillion      -> 100_000_000UL
+        | PriceType.Billion             -> 1_000_000_000UL
+        | PriceType.FiveHundredTwelve   -> 512UL
+        | PriceType.Zero                -> 0UL
+        | _                             -> failwith "Invalid PriceType! PriceType: " + (int32 priceType).ToString()
+                
+    let getScaledValueUInt64 (value: uint64, scaler: PriceType) : double =
+        (double value) / (double (getPriceTypeValue(scaler)))
+        
+    let getScaledValueInt32 (value: int, scaler: PriceType) : double =
+        (double value) / (double (getPriceTypeValue(scaler)))
+        
+    let getSecondsSinceUnixEpoch (timestamp : UInt64) : double =
+        (double timestamp) / 1_000_000_000.0
+    
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
     let useOnQuote : bool = not (obj.ReferenceEquals(onQuote,null))
     let useOnOI : bool = not (obj.ReferenceEquals(onOpenInterest,null))
@@ -83,7 +114,7 @@ type Client(
           | Provider.MANUAL 
           | Provider.MANUAL_FIREHOSE -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token
           | _ -> failwith "Provider not specified!"
-
+    
     let parseTrade (bytes: ReadOnlySpan<byte>) : Trade =
         {
             Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
@@ -102,7 +133,7 @@ type Client(
             Timestamp = BitConverter.ToDouble(bytes.Slice(34, 8))
         }
 
-    let parseOpenInterest (bytes: ReadOnlySpan<byte>) : OpenInterest =
+    let parseRefresh (bytes: ReadOnlySpan<byte>) : OpenInterest =
         {
             Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
             OpenInterest = BitConverter.ToInt32(bytes.Slice(22, 4))
@@ -110,46 +141,50 @@ type Client(
         }
 
     let parseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
+        let priceType = enum<PriceType> (int32 (bytes.Item(22))) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1)
+        let underlyingPriceType = enum<PriceType> (int32 (bytes.Item(23))) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1)
         {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
-            Type = enum<UAType> (int32 (bytes.Item(21)))
-            Sentiment = enum<UASentiment> (int32 (bytes.Item(22)))
-            TotalValue = BitConverter.ToSingle(bytes.Slice(23, 4))
-            TotalSize = BitConverter.ToUInt32(bytes.Slice(27, 4))
-            AveragePrice = BitConverter.ToSingle(bytes.Slice(31, 4))
-            AskAtExecution = BitConverter.ToSingle(bytes.Slice(35, 4))
-            BidAtExecution = BitConverter.ToSingle(bytes.Slice(39, 4))
-            PriceAtExecution = BitConverter.ToSingle(bytes.Slice(43, 4))
-            Timestamp = BitConverter.ToDouble(bytes.Slice(47, 8))
+            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, maxSymbolSize))
+            Type = enum<UAType> (int32 (bytes.Item(20))) // maxSymbolSize - 1 + 1
+            Sentiment = enum<UASentiment> (int32 (bytes.Item(21))) // maxSymbolSize - 1 + 1 + TypeSize(1)
+            //priceType positionally here
+            //underlyingPriceType positionally here
+            TotalValue = getScaledValueUInt64(BitConverter.ToUInt64(bytes.Slice(24, 8)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1)
+            TotalSize = BitConverter.ToUInt32(bytes.Slice(32, 4)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8)
+            AveragePrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(36, 4)), priceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4)
+            AskAtExecution = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(40, 4)), priceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4)
+            BidAtExecution = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(44, 4)), priceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4)
+            PriceAtExecution = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(48, 4)), underlyingPriceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4)
+            Timestamp = getSecondsSinceUnixEpoch(BitConverter.ToUInt64(bytes.Slice(52, 8))) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4) + PriceAtExecutionSize(4)
         }
 
     let parseSocketMessage (bytes: byte[], startIndex: byref<int>) : unit =
-        let msgType : int = int32 bytes.[startIndex + 21]
-        if ((msgType = 1) || (msgType = 2))
-        then 
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 42)
-            let quote: Quote = parseQuote(chunk)
-            startIndex <- startIndex + 42
-            if useOnQuote then onQuote.Invoke(quote)
-        elif (msgType = 0)
-        then
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 50)
+        let msgType : int = int32 bytes.[startIndex + maxSymbolSize]
+        match msgType with
+        | 0 -> //Trade
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, tradeMessageSize)
             let trade: Trade = parseTrade(chunk)
-            startIndex <- startIndex + 50
+            startIndex <- startIndex + tradeMessageSize
             if useOnTrade then onTrade.Invoke(trade)
-        elif (msgType > 3)
-        then
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 55)
-            let ua: UnusualActivity = parseUnusualActivity(chunk)
-            startIndex <- startIndex + 55
-            if useOnUA then onUnusualActivity.Invoke(ua)
-        elif (msgType = 3)
-        then
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 34)
-            let openInterest = parseOpenInterest(chunk)
-            startIndex <- startIndex + 34
+        | 1 -> //Quote
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, quoteMessageSize)
+            let quote: Quote = parseQuote(chunk)
+            startIndex <- startIndex + quoteMessageSize
+            if useOnQuote then onQuote.Invoke(quote)
+        | 2 -> //Refresh
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, refreshMessageSize)
+            let openInterest = parseRefresh(chunk)
+            startIndex <- startIndex + refreshMessageSize
             if useOnOI then onOpenInterest.Invoke(openInterest)
-        else Log.Warning("Invalid MessageType: {0}", msgType)
+        | 3 //Block            
+        | 4 //Sweep
+        | 5 //Large
+        | 6 -> //Golden
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, unusualActivityMessageSize)
+            let ua: UnusualActivity = parseUnusualActivity(chunk)
+            startIndex <- startIndex + unusualActivityMessageSize
+            if useOnUA then onUnusualActivity.Invoke(ua)
+        | _ -> Log.Warning("Invalid MessageType: {0}", msgType)
 
     let heartbeatFn () =
         let ct = ctSource.Token
