@@ -78,7 +78,7 @@ type Client(
         | PriceType.Billion             -> 1_000_000_000UL
         | PriceType.FiveHundredTwelve   -> 512UL
         | PriceType.Zero                -> 0UL
-        | _                             -> failwith "Invalid PriceType! PriceType: " + (int32 priceType).ToString()
+        | _                             -> failwith ("Invalid PriceType! PriceType: " + (int32 priceType).ToString())
                 
     let getScaledValueUInt64 (value: uint64, scaler: PriceType) : double =
         (double value) / (double (getPriceTypeValue(scaler)))
@@ -116,12 +116,20 @@ type Client(
           | _ -> failwith "Provider not specified!"
     
     let parseTrade (bytes: ReadOnlySpan<byte>) : Trade =
+        let priceType = enum<PriceType> (int32 (bytes.Item(25))) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4)
+        let underlyingPriceType = enum<PriceType> (int32 (bytes.Item(26))) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1)
         {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
-            Price = BitConverter.ToDouble(bytes.Slice(22, 8))
-            Size = BitConverter.ToUInt32(bytes.Slice(30, 4))
-            Timestamp = BitConverter.ToDouble(bytes.Slice(34, 8))
-            TotalVolume = BitConverter.ToUInt64(bytes.Slice(42, 8))
+            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, maxSymbolSize))
+            //Type positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
+            Price = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(21, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1)
+            //PriceType positionally goes here
+            //UnderlyingPriceType positionally goes here
+            Size = BitConverter.ToUInt32(bytes.Slice(27, 4)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1)
+            Timestamp = getSecondsSinceUnixEpoch(BitConverter.ToUInt64(bytes.Slice(31, 8))) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4)
+            TotalVolume = BitConverter.ToUInt64(bytes.Slice(39, 8)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8)
+            AskPriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(47, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8)
+            BidPriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(51, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8) + AskPriceAtExecutionSize(4)
+            UnderlyingPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(55, 4)), underlyingPriceType) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8) + AskPriceAtExecutionSize(4) +  + BidPriceAtExecutionSize(4)
         }
 
     let parseQuote (bytes: ReadOnlySpan<byte>) : Quote =
@@ -130,9 +138,9 @@ type Client(
             Symbol = Encoding.ASCII.GetString(bytes.Slice(0, maxSymbolSize))
             //Type positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
             //PriceType positionally goes here
-            AskPrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(22, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1)
+            AskPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(22, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1)
             AskSize = BitConverter.ToUInt32(bytes.Slice(26, 4)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1) + AskPriceSize(4)
-            BidPrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(30, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4)
+            BidPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(30, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4)
             BidSize = BitConverter.ToUInt32(bytes.Slice(34, 4)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4) + BidPriceSize(4)
             Timestamp = getSecondsSinceUnixEpoch(BitConverter.ToUInt64(bytes.Slice(38, 8))) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4) + BidPriceSize(4) + BidSizeSize(4)
         }
@@ -144,10 +152,10 @@ type Client(
             //Type positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
             OpenInterest = BitConverter.ToUInt32(bytes.Slice(21, 4)) // maxSymbolSize - 1 + 1 + typeSize(1)
             //price type positionally goes here
-            OpenPrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(26, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1)
-            ClosePrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(30, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1) + OpenPriceSize(4)
-            HighPrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(34, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1) + OpenPriceSize(4) + ClosePriceSize(4)
-            LowPrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(38, 4)), priceType)) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1) + OpenPriceSize(4) + ClosePriceSize(4) + HighPriceSize(4)
+            OpenPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(26, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1)
+            ClosePrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(30, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1) + OpenPriceSize(4)
+            HighPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(34, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1) + OpenPriceSize(4) + ClosePriceSize(4)
+            LowPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(38, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1) + OpenInterestSize(4) + PriceTypeSize(1) + OpenPriceSize(4) + ClosePriceSize(4) + HighPriceSize(4)
         }
 
     let parseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
@@ -161,10 +169,10 @@ type Client(
             //underlyingPriceType positionally here
             TotalValue = getScaledValueUInt64(BitConverter.ToUInt64(bytes.Slice(24, 8)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1)
             TotalSize = BitConverter.ToUInt32(bytes.Slice(32, 4)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8)
-            AveragePrice = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(36, 4)), priceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4)
-            AskAtExecution = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(40, 4)), priceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4)
-            BidAtExecution = single (getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(44, 4)), priceType)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4)
-            PriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(48, 4)), underlyingPriceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4)
+            AveragePrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(36, 4)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4)
+            AskAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(40, 4)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4)
+            BidAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(44, 4)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4)
+            UnderlyingPriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(48, 4)), underlyingPriceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4)
             Timestamp = getSecondsSinceUnixEpoch(BitConverter.ToUInt64(bytes.Slice(52, 8))) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4) + PriceAtExecutionSize(4)
         }
 

@@ -24,9 +24,9 @@ type QuoteType =
 type [<Struct>] Quote =
     {
         Symbol : string
-        AskPrice : single
+        AskPrice : float
         AskSize : uint32
-        BidPrice : single
+        BidPrice : float
         BidSize : uint32
         Timestamp : float
     }
@@ -58,8 +58,11 @@ type [<Struct>] Trade =
         Symbol : string
         Price : float
         Size : uint32
-        TotalVolume : uint64
         Timestamp : float
+        TotalVolume : uint64
+        AskPriceAtExecution: float
+        BidPriceAtExecution: float
+        UnderlyingPrice: float
     }
     member this.GetStrikePrice() : float32 =
         let whole : uint16 = (uint16 this.Symbol.[13] - uint16 '0') * 10_000us + (uint16 this.Symbol.[14] - uint16 '0') * 1000us + (uint16 this.Symbol.[15] - uint16 '0') * 100us + (uint16 this.Symbol.[16] - uint16 '0') * 10us + (uint16 this.Symbol.[17] - uint16 '0')
@@ -87,10 +90,10 @@ type [<Struct>] Refresh =
     {
         Symbol : string
         OpenInterest : uint32
-        OpenPrice : single
-        ClosePrice : single
-        HighPrice : single
-        LowPrice : single
+        OpenPrice : float
+        ClosePrice : float
+        HighPrice : float
+        LowPrice : float
     }
 
 type UAType =
@@ -123,13 +126,13 @@ type [<Struct>] UnusualActivity =
         Symbol : string
         Type : UAType
         Sentiment : UASentiment
-        TotalValue : double
+        TotalValue : float
         TotalSize : uint32
-        AveragePrice : single
-        AskAtExecution : single
-        BidAtExecution : single
-        PriceAtExecution : float
-        Timestamp : double
+        AveragePrice : float
+        AskAtExecution : float
+        BidAtExecution : float
+        UnderlyingPriceAtExecution : float
+        Timestamp : float
     }
     member this.GetStrikePrice() : float32 =
         let whole : uint16 = (uint16 this.Symbol.[13] - uint16 '0') * 10_000us + (uint16 this.Symbol.[14] - uint16 '0') * 1000us + (uint16 this.Symbol.[15] - uint16 '0') * 100us + (uint16 this.Symbol.[16] - uint16 '0') * 10us + (uint16 this.Symbol.[17] - uint16 '0')
@@ -154,6 +157,6 @@ type [<Struct>] UnusualActivity =
         ", Average Price: " + this.AveragePrice.ToString("f2") +
         ", Ask Price at Execution: " + this.AskAtExecution.ToString("f2") +
         ", Bid Price at Execution: " + this.BidAtExecution.ToString("f2") +
-        ", Underlying Price at Execution: " + this.PriceAtExecution.ToString("f2") +
+        ", Underlying Price at Execution: " + this.UnderlyingPriceAtExecution.ToString("f2") +
         ", Timestamp: " + this.Timestamp.ToString("f6") +
         ")"
