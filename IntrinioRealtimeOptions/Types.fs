@@ -35,9 +35,8 @@ type [<Struct>] Quote =
     }
 
     member this.GetStrikePrice() : float32 =
-        let whole : uint16 = (uint16 this.Symbol.[13] - uint16 '0') * 10_000us + (uint16 this.Symbol.[14] - uint16 '0') * 1000us + (uint16 this.Symbol.[15] - uint16 '0') * 100us + (uint16 this.Symbol.[16] - uint16 '0') * 10us + (uint16 this.Symbol.[17] - uint16 '0')
-        let part : float32 = (float32 (uint8 this.Symbol.[18] - uint8 '0')) * 0.1f + (float32 (uint8 this.Symbol.[19] - uint8 '0')) * 0.01f + (float32 (uint8 this.Symbol.[20] - uint8 '0')) * 0.001f
-        (float32 whole) + part
+        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((this.Symbol.IndexOf('_') + 8), (this.Symbol.Length - (this.Symbol.IndexOf('_') + 8)))
+        Single.Parse(chunk)
 
     member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
 
@@ -50,9 +49,9 @@ type [<Struct>] Quote =
     override this.ToString() : string =
         sprintf "Quote (Symbol: %s, AskPrice: %s, AskSize: %s, BidPrice: %s, BidSize: %s, Timestamp: %s)"
             this.Symbol
-            (this.AskPrice.ToString("f2"))
+            (this.AskPrice.ToString("f3"))
             (this.AskSize.ToString())
-            (this.BidPrice.ToString("f2"))
+            (this.BidPrice.ToString("f3"))
             (this.BidSize.ToString())
             (this.Timestamp.ToString("f6"))
 
@@ -68,26 +67,27 @@ type [<Struct>] Trade =
         UnderlyingPrice: float
     }
     member this.GetStrikePrice() : float32 =
-        let whole : uint16 = (uint16 this.Symbol.[13] - uint16 '0') * 10_000us + (uint16 this.Symbol.[14] - uint16 '0') * 1000us + (uint16 this.Symbol.[15] - uint16 '0') * 100us + (uint16 this.Symbol.[16] - uint16 '0') * 10us + (uint16 this.Symbol.[17] - uint16 '0')
-        let part : float32 = (float32 (uint8 this.Symbol.[18] - uint8 '0')) * 0.1f + (float32 (uint8 this.Symbol.[19] - uint8 '0')) * 0.01f + (float32 (uint8 this.Symbol.[20] - uint8 '0')) * 0.001f
-        (float32 whole) + part
+        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((this.Symbol.IndexOf('_') + 8), (this.Symbol.Length - (this.Symbol.IndexOf('_') + 8)))
+        Single.Parse(chunk)
 
-    member this.IsPut() : bool = this.Symbol.[12] = 'P'
+    member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
 
-    member this.IsCall() : bool = this.Symbol.[12] = 'C'
+    member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_'), 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, 6).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
 
     override this.ToString() : string =
-        "Trade (" +
-        "Symbol: " + this.Symbol +
-        ", Price: " + this.Price.ToString("f2") +
-        ", Size: " + this.Size.ToString() +
-        ", TotalVolume: " + this.TotalVolume.ToString() +
-        ", Timestamp: " + this.Timestamp.ToString("f6") +
-        ")"
+        sprintf "Trade (Symbol: %s, Price: %s, Size: %s, Timestamp: %s, TotalVolume: %s, AskPriceAtExecution: %s, BidPriceAtExecution: %s, UnderlyingPrice: %s)"
+            this.Symbol
+            (this.Price.ToString("f3"))
+            (this.Size.ToString())
+            (this.Timestamp.ToString("f6"))
+            (this.TotalVolume.ToString())
+            (this.AskPriceAtExecution.ToString("f3"))
+            (this.BidPriceAtExecution.ToString("f3"))
+            (this.UnderlyingPrice.ToString("f3"))
 
 type [<Struct>] Refresh =
     {
@@ -98,6 +98,26 @@ type [<Struct>] Refresh =
         HighPrice : float
         LowPrice : float
     }
+    member this.GetStrikePrice() : float32 =
+        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((this.Symbol.IndexOf('_') + 8), (this.Symbol.Length - (this.Symbol.IndexOf('_') + 8)))
+        Single.Parse(chunk)
+
+    member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
+
+    member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
+
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_'), 6), "yyMMdd", CultureInfo.InvariantCulture)
+
+    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
+    
+    override this.ToString() : string =
+        sprintf "Refresh (Symbol: %s, OpenInterest: %s, OpenPrice: %s, ClosePrice: %s, HighPrice: %s, LowPrice: %s)"
+            this.Symbol
+            (this.OpenInterest.ToString())
+            (this.OpenPrice.ToString("f3"))
+            (this.ClosePrice.ToString("f3"))
+            (this.HighPrice.ToString("f3"))
+            (this.LowPrice.ToString("f3"))
 
 type UAType =
     | Block = 3
@@ -138,28 +158,26 @@ type [<Struct>] UnusualActivity =
         Timestamp : float
     }
     member this.GetStrikePrice() : float32 =
-        let whole : uint16 = (uint16 this.Symbol.[13] - uint16 '0') * 10_000us + (uint16 this.Symbol.[14] - uint16 '0') * 1000us + (uint16 this.Symbol.[15] - uint16 '0') * 100us + (uint16 this.Symbol.[16] - uint16 '0') * 10us + (uint16 this.Symbol.[17] - uint16 '0')
-        let part : float32 = (float32 (uint8 this.Symbol.[18] - uint8 '0')) * 0.1f + (float32 (uint8 this.Symbol.[19] - uint8 '0')) * 0.01f + (float32 (uint8 this.Symbol.[20] - uint8 '0')) * 0.001f
-        (float32 whole) + part
+        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((this.Symbol.IndexOf('_') + 8), (this.Symbol.Length - (this.Symbol.IndexOf('_') + 8)))
+        Single.Parse(chunk)
 
-    member this.IsPut() : bool = this.Symbol.[12] = 'P'
+    member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
 
-    member this.IsCall() : bool = this.Symbol.[12] = 'C'
+    member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_'), 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, 6).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
 
     override this.ToString() : string =
-        "Unusual Activity (" +
-        "Symbol: " + this.Symbol +
-        ", Activity Type: " + this.Type.ToString() +
-        ", Sentiment: " + this.Sentiment.ToString() +
-        ", Total Value: " + this.TotalValue.ToString("f2") +
-        ", Total Size: " + this.TotalSize.ToString() +
-        ", Average Price: " + this.AveragePrice.ToString("f2") +
-        ", Ask Price at Execution: " + this.AskAtExecution.ToString("f2") +
-        ", Bid Price at Execution: " + this.BidAtExecution.ToString("f2") +
-        ", Underlying Price at Execution: " + this.UnderlyingPriceAtExecution.ToString("f2") +
-        ", Timestamp: " + this.Timestamp.ToString("f6") +
-        ")"
+        sprintf "UnusualActivity (Symbol: %s, Type: %s, Sentiment: %s, TotalValue: %s, TotalSize: %s, AveragePrice: %s, AskAtExecution: %s, BidAtExecution: %s, UnderlyingPriceAtExecution: %s, Timestamp: %s)"
+            this.Symbol
+            (this.Type.ToString())
+            (this.Sentiment.ToString())
+            (this.TotalValue.ToString("f3"))
+            (this.TotalSize.ToString())
+            (this.AveragePrice.ToString("f3"))
+            (this.AskAtExecution.ToString("f3"))
+            (this.BidAtExecution.ToString("f3"))
+            (this.UnderlyingPriceAtExecution.ToString("f3"))
+            (this.Timestamp.ToString("f6"))
