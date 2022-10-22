@@ -129,7 +129,7 @@ type Client(
             TotalVolume = BitConverter.ToUInt64(bytes.Slice(39, 8)) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8)
             AskPriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(47, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8)
             BidPriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(51, 4)), priceType) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8) + AskPriceAtExecutionSize(4)
-            UnderlyingPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(55, 4)), underlyingPriceType) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8) + AskPriceAtExecutionSize(4) +  + BidPriceAtExecutionSize(4)
+            UnderlyingPriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(55, 4)), underlyingPriceType) // maxSymbolSize - 1 + 1 + typeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8) + AskPriceAtExecutionSize(4) +  + BidPriceAtExecutionSize(4)
         }
 
     let parseQuote (bytes: ReadOnlySpan<byte>) : Quote =

@@ -64,7 +64,7 @@ type [<Struct>] Trade =
         TotalVolume : uint64
         AskPriceAtExecution: float
         BidPriceAtExecution: float
-        UnderlyingPrice: float
+        UnderlyingPriceAtExecution: float
     }
     member this.GetStrikePrice() : float32 =
         let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((this.Symbol.IndexOf('_') + 8), (this.Symbol.Length - (this.Symbol.IndexOf('_') + 8)))
@@ -87,7 +87,7 @@ type [<Struct>] Trade =
             (this.TotalVolume.ToString())
             (this.AskPriceAtExecution.ToString("f3"))
             (this.BidPriceAtExecution.ToString("f3"))
-            (this.UnderlyingPrice.ToString("f3"))
+            (this.UnderlyingPriceAtExecution.ToString("f3"))
 
 type [<Struct>] Refresh =
     {
