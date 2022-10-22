@@ -18,12 +18,12 @@ type QuoteType =
 /// <summary>
 /// A 'Quote' is a unit of data representing an individual market bid or ask event.
 /// </summary>
-/// <param name="Symbol">The id of the option contract (e.g. AAPL_210305C00070000).</param>
+/// <param name="Symbol">The id of the option contract (e.g. AAPL_210305C350.00).</param>
 /// <param name="AskPrice">The dollar price of the last ask.</param>
 /// <param name="AskSize">The number of contacts for the ask.</param>
 /// <param name="BidPrice">The dollars price of the last bid.</param>
 /// <param name="BidSize">The number of contacts for the bid.</param>
-/// <param name="Timestamp">The time that the trade was executed (a unix timestamp representing the number of seconds (or better) since the unix epoch).</param>
+/// <param name="Timestamp">The time that the Quote was made (a unix timestamp representing the number of seconds (or better) since the unix epoch).</param>
 type [<Struct>] Quote =
     {
         Symbol : string
@@ -55,6 +55,17 @@ type [<Struct>] Quote =
             (this.BidSize.ToString())
             (this.Timestamp.ToString("f6"))
 
+/// <summary>
+/// A 'Trade' is a unit of data representing an individual market trade event.
+/// </summary>
+/// <param name="Symbol">The id of the option contract (e.g. AAPL_210305C350.00).</param>
+/// <param name="Price">The dollar price of the last trade.</param>
+/// <param name="Size">The number of contacts for the trade.</param>
+/// <param name="Timestamp">The time that the trade was executed (a unix timestamp representing the number of seconds (or better) since the unix epoch).</param>
+/// <param name="TotalVolume">The running total trade volume for this contract today.</param>
+/// <param name="AskPriceAtExecution">The dollar price of the best ask at execution.</param>
+/// <param name="BidPriceAtExecution">The dollar price of the best bid at execution.</param>
+/// <param name="UnderlyingPriceAtExecution">The dollar price of the underlying security at the time of execution.</param>
 type [<Struct>] Trade =
     {
         Symbol : string
@@ -89,6 +100,15 @@ type [<Struct>] Trade =
             (this.BidPriceAtExecution.ToString("f3"))
             (this.UnderlyingPriceAtExecution.ToString("f3"))
 
+/// <summary>
+/// A 'Refresh' is an event that periodically sends updated values for open interest and high/low/open/close.
+/// </summary>
+/// <param name="Symbol">The id of the option contract (e.g. AAPL_210305C350.00).</param>
+/// <param name="OpenInterest">Number of total active contracts for this contract.</param>
+/// <param name="OpenPrice">The opening price for this contract for the day.</param>
+/// <param name="ClosePrice">The closing price for this contract for the day.</param>
+/// <param name="HighPrice">The running high price for this contract today.</param>
+/// <param name="LowPrice">The running low price for this contract today.</param>
 type [<Struct>] Refresh =
     {
         Symbol : string
@@ -129,8 +149,9 @@ type UASentiment =
     | Neutral = 0
     | Bullish = 1
     | Bearish = 2
-    
-type PriceType =
+
+///This is a scalar divisor for prices that is sent along with the price.
+type internal PriceType =
     | One               = 0x00
     | Ten               = 0x01
     | Hundred           = 0x02
@@ -144,6 +165,19 @@ type PriceType =
     | FiveHundredTwelve = 0x0A
     | Zero              = 0x0F
     
+/// <summary>
+/// An 'UnusualActivity' is an event that indicates unusual trading activity.
+/// </summary>
+/// <param name="Symbol">The id of the option contract (e.g. AAPL_210305C350.00).</param>
+/// <param name="Type">The type of unusual activity.</param>
+/// <param name="Sentiment">Bullish or Bearish.</param>
+/// <param name="TotalValue">The total value in dollars of the unusual trading activity.</param>
+/// <param name="TotalSize">The total number of contracts of the unusual trading activity.</param>
+/// <param name="AveragePrice">The average executed trade price of the unusual activity.</param>
+/// <param name="AskAtExecution">The best ask of this contract at the time of execution.</param>
+/// <param name="BidAtExecution">The best bid of this contract at the time of execution.</param>
+/// <param name="UnderlyingPriceAtExecution">The dollar price of the underlying security at the time of execution.</param>
+/// <param name="Timestamp">The time that the unusual activity began (a unix timestamp representing the number of seconds (or better) since the unix epoch).</param>
 type [<Struct>] UnusualActivity =
     {
         Symbol : string
