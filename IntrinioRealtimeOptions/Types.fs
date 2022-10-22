@@ -2,7 +2,6 @@
 
 open System
 open System.Globalization
-open Intrinio
 
 type Provider =
     | NONE = 0
