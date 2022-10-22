@@ -11,10 +11,6 @@ type Provider =
     | MANUAL = 3
     | MANUAL_FIREHOSE = 4
 
-type QuoteType =
-    | Ask = 1
-    | Bid = 2
-
 /// <summary>
 /// A 'Quote' is a unit of data representing an individual market bid or ask event.
 /// </summary>
@@ -139,12 +135,18 @@ type [<Struct>] Refresh =
             (this.HighPrice.ToString("f3"))
             (this.LowPrice.ToString("f3"))
 
+/// <summary>
+/// Unusual activity type.
+/// </summary>
 type UAType =
     | Block = 3
     | Sweep = 4
     | Large = 5
     | Golden = 6
 
+/// <summary>
+/// Unusual activity sentiment.
+/// </summary>
 type UASentiment =
     | Neutral = 0
     | Bullish = 1
