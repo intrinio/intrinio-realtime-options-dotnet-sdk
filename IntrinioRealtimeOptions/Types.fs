@@ -30,7 +30,8 @@ type [<Struct>] Quote =
     }
 
     member this.GetStrikePrice() : float32 =
-        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((this.Symbol.IndexOf('_') + 8), (this.Symbol.Length - (this.Symbol.IndexOf('_') + 8)))
+        let i: int = this.Symbol.IndexOf('_')
+        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((i + 8), (this.Symbol.Length - (i + 8)))
         Single.Parse(chunk)
 
     member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
@@ -73,7 +74,8 @@ type [<Struct>] Trade =
         UnderlyingPriceAtExecution: float
     }
     member this.GetStrikePrice() : float32 =
-        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((this.Symbol.IndexOf('_') + 8), (this.Symbol.Length - (this.Symbol.IndexOf('_') + 8)))
+        let i: int = this.Symbol.IndexOf('_')
+        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((i + 8), (this.Symbol.Length - (i + 8)))
         Single.Parse(chunk)
 
     member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
@@ -114,7 +116,8 @@ type [<Struct>] Refresh =
         LowPrice : float
     }
     member this.GetStrikePrice() : float32 =
-        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((this.Symbol.IndexOf('_') + 8), (this.Symbol.Length - (this.Symbol.IndexOf('_') + 8)))
+        let i: int = this.Symbol.IndexOf('_')
+        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((i + 8), (this.Symbol.Length - (i + 8)))
         Single.Parse(chunk)
 
     member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
@@ -193,7 +196,8 @@ type [<Struct>] UnusualActivity =
         Timestamp : float
     }
     member this.GetStrikePrice() : float32 =
-        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((this.Symbol.IndexOf('_') + 8), (this.Symbol.Length - (this.Symbol.IndexOf('_') + 8)))
+        let i: int = this.Symbol.IndexOf('_')
+        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((i + 8), (this.Symbol.Length - (i + 8)))
         Single.Parse(chunk)
 
     member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
