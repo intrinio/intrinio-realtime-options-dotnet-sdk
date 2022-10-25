@@ -177,32 +177,32 @@ type Client(
         }
 
     let parseSocketMessage (bytes: byte[], startIndex: byref<int>) : unit =
-        let msgType : int = int32 bytes.[startIndex + maxSymbolSize] //This works because it's startIndex + maxSymbolSize - 1 (zero based) + 1 (size of type) 
-        match msgType with
-        | 0 -> //Trade
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, tradeMessageSize)
-            let trade: Trade = parseTrade(chunk)
-            startIndex <- startIndex + tradeMessageSize
-            if useOnTrade then onTrade.Invoke(trade)
-        | 1 -> //Quote
+        let msgType : int = int32 bytes.[startIndex + maxSymbolSize] //This works because it's startIndex + maxSymbolSize - 1 (zero based) + 1 (size of type)
+        if (msgType = 1) //using if-else vs switch for hotpathing
+        then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, quoteMessageSize)
             let quote: Quote = parseQuote(chunk)
             startIndex <- startIndex + quoteMessageSize
             if useOnQuote then onQuote.Invoke(quote)
-        | 2 -> //Refresh
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, refreshMessageSize)
-            let refresh = parseRefresh(chunk)
-            startIndex <- startIndex + refreshMessageSize
-            if useOnRefresh then onRefresh.Invoke(refresh)
-        | 3 //Block            
-        | 4 //Sweep
-        | 5 //Large
-        | 6 -> //Golden
+        elif (msgType = 0)
+        then
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, tradeMessageSize)
+            let trade: Trade = parseTrade(chunk)
+            startIndex <- startIndex + tradeMessageSize
+            if useOnTrade then onTrade.Invoke(trade)
+        elif (msgType > 2)
+        then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, unusualActivityMessageSize)
             let ua: UnusualActivity = parseUnusualActivity(chunk)
             startIndex <- startIndex + unusualActivityMessageSize
             if useOnUA then onUnusualActivity.Invoke(ua)
-        | _ -> Log.Warning("Invalid MessageType: {0}", msgType)
+        elif (msgType = 2)
+        then
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, refreshMessageSize)
+            let refresh = parseRefresh(chunk)
+            startIndex <- startIndex + refreshMessageSize
+            if useOnRefresh then onRefresh.Invoke(refresh)
+        else Log.Warning("Invalid MessageType: {0}", msgType)
 
     let heartbeatFn () =
         let ct = ctSource.Token
