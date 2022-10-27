@@ -6,7 +6,6 @@ open System
 open System.Runtime.InteropServices
 open System.Net.Http
 open System.Text
-open System.Text.Json
 open System.Collections.Concurrent
 open System.Collections.Generic
 open System.Threading
@@ -14,6 +13,121 @@ open System.Threading.Tasks
 open System.Net.Sockets
 open WebSocket4Net
 open Intrinio.Config
+
+module Inline =
+
+    let [<Literal>] internal MAX_SYMBOL_SIZE : int = 21
+    let [<Literal>] internal TRADE_MESSAGE_SIZE : int = 70 //59 used + 11 pad
+    let [<Literal>] internal QUOTE_MESSAGE_SIZE : int = 50 //46 used + 4 pad
+    let [<Literal>] internal REFRESH_MESSAGE_SIZE : int = 50 //42 used + 8 pad
+    let [<Literal>] internal UNUSUAL_ACTIVITY_MESSAGE_SIZE : int = 72 //60 used + 12 pad
+
+    let SELF_HEAL_BACKOFFS : int[] = [| 10_000; 30_000; 60_000; 300_000; 600_000 |]
+
+    let private priceTypeDivisorTable : double[] =
+        [|
+            1.0
+            10.0
+            100.0
+            1000.0
+            10000.0
+            100000.0
+            1000000.0
+            10000000.0
+            100000000.0
+            1000000000.0
+            512.0
+            0.0
+            0.0
+            0.0
+            0.0
+            Double.NaN
+        |]
+                
+    let inline internal ScaleUInt64Price (price: uint64, priceType: uint8) : double =
+        (double price) / priceTypeDivisorTable[int priceType]
+        
+    let inline internal ScaleInt32Price (price: int, priceType: uint8) : double =
+        (double price) / priceTypeDivisorTable[int priceType]
+        
+    let inline internal ScaleTimestamp (timestamp : UInt64) : double =
+        (double timestamp) / 1_000_000_000.0
+
+    let inline internal ParseTrade (bytes: ReadOnlySpan<byte>) : Trade =
+        let priceType : uint8 = bytes.Item(25) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4)
+        let underlyingPriceType : uint8 = bytes.Item(26) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1)
+        {
+            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, MAX_SYMBOL_SIZE))
+            //EventType positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
+            Price = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(21, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1)
+            //PriceType positionally goes here
+            //UnderlyingPriceType positionally goes here
+            Size = BitConverter.ToUInt32(bytes.Slice(27, 4)) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1)
+            Timestamp = ScaleTimestamp(BitConverter.ToUInt64(bytes.Slice(31, 8))) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4)
+            TotalVolume = BitConverter.ToUInt64(bytes.Slice(39, 8)) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8)
+            AskPriceAtExecution = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(47, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8)
+            BidPriceAtExecution = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(51, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8) + AskPriceAtExecutionSize(4)
+            UnderlyingPriceAtExecution = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(55, 4)), underlyingPriceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8) + AskPriceAtExecutionSize(4) +  + BidPriceAtExecutionSize(4)
+        }
+
+    let inline internal ParseQuote (bytes: ReadOnlySpan<byte>) : Quote =
+        let priceType : uint8 = bytes.Item(21) // maxSymbolSize - 1 + 1 + EventTypeSize(1)
+        {
+            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, MAX_SYMBOL_SIZE))
+            //EventType positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
+            //PriceType positionally goes here
+            AskPrice = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(22, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1)
+            AskSize = BitConverter.ToUInt32(bytes.Slice(26, 4)) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + AskPriceSize(4)
+            BidPrice = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(30, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4)
+            BidSize = BitConverter.ToUInt32(bytes.Slice(34, 4)) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4) + BidPriceSize(4)
+            Timestamp = ScaleTimestamp(BitConverter.ToUInt64(bytes.Slice(38, 8))) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4) + BidPriceSize(4) + BidSizeSize(4)
+        }
+
+    let inline internal ParseRefresh (bytes: ReadOnlySpan<byte>) : Refresh =
+        let priceType : uint8 = bytes.Item(21) // maxSymbolSize - 1 + 1 + EventTypeSize(1)
+        {
+            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, MAX_SYMBOL_SIZE))
+            //Event Type positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
+            //price type positionally goes here
+            OpenInterest = BitConverter.ToUInt32(bytes.Slice(22, 4)) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1)
+            OpenPrice = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(26, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + OpenInterestSize(4)
+            ClosePrice = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(30, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + OpenInterestSize(4) + OpenPriceSize(4)
+            HighPrice = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(34, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + OpenInterestSize(4) + OpenPriceSize(4) + ClosePriceSize(4)
+            LowPrice = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(38, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + OpenInterestSize(4) + OpenPriceSize(4) + ClosePriceSize(4) + HighPriceSize(4)
+        }
+
+    let inline internal ParseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
+        let priceType : uint8 = bytes.Item(22) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1)
+        let underlyingPriceType : uint8 = bytes.Item(23) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1)
+        {
+            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, MAX_SYMBOL_SIZE))
+            Type = enum<UAType> (int32 (bytes.Item(20))) // maxSymbolSize - 1 + 1
+            Sentiment = enum<UASentiment> (int32 (bytes.Item(21))) // maxSymbolSize - 1 + 1 + TypeSize(1)
+            //priceType positionally here
+            //underlyingPriceType positionally here
+            TotalValue = ScaleUInt64Price(BitConverter.ToUInt64(bytes.Slice(24, 8)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1)
+            TotalSize = BitConverter.ToUInt32(bytes.Slice(32, 4)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8)
+            AveragePrice = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(36, 4)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4)
+            AskAtExecution = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(40, 4)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4)
+            BidAtExecution = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(44, 4)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4)
+            UnderlyingPriceAtExecution = ScaleInt32Price(BitConverter.ToInt32(bytes.Slice(48, 4)), underlyingPriceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4)
+            Timestamp = ScaleTimestamp(BitConverter.ToUInt64(bytes.Slice(52, 8))) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4) + PriceAtExecutionSize(4)
+        }
+
+    let inline internal SetUsesTrade(bitmask: uint8) : uint8 = bitmask &&& 1uy
+    let inline internal SetUsesQuote(bitmask: uint8) : uint8 = bitmask &&& 2uy 
+    let inline internal SetUsesRefresh(bitmask: uint8) : uint8 = bitmask &&& 4uy 
+    let inline internal SetUsesUA(bitmask: uint8) : uint8 = bitmask &&& 8uy
+
+    let inline internal DoBackoff(fn: unit -> bool) : unit =
+        let mutable i : int = 0
+        let mutable backoff : int = SELF_HEAL_BACKOFFS.[i]
+        let mutable success : bool = fn()
+        while not success do
+            Thread.Sleep(backoff)
+            i <- Math.Min(i + 1, SELF_HEAL_BACKOFFS.Length - 1)
+            backoff <- SELF_HEAL_BACKOFFS.[i]
+            success <- fn()
 
 type internal WebSocketState(ws: WebSocket) =
     let mutable webSocket : WebSocket = ws
@@ -37,20 +151,13 @@ type internal WebSocketState(ws: WebSocket) =
 
     member _.Reset() : unit = lastReset <- DateTime.Now
 
+open Inline
 type Client(
     [<Optional; DefaultParameterValue(null:Action<Trade>)>] onTrade: Action<Trade>,
     [<Optional; DefaultParameterValue(null:Action<Quote>)>] onQuote : Action<Quote>,
     [<Optional; DefaultParameterValue(null:Action<Refresh>)>] onRefresh: Action<Refresh>,
     [<Optional; DefaultParameterValue(null:Action<UnusualActivity>)>] onUnusualActivity: Action<UnusualActivity>) =
-    let [<Literal>] heartbeatMessage : string = "{\"topic\":\"phoenix\",\"event\":\"heartbeat\",\"payload\":{},\"ref\":null}"
-    let [<Literal>] heartbeatResponse : string = "{\"topic\":\"phoenix\",\"ref\":null,\"payload\":{\"status\":\"ok\",\"response\":{}},\"event\":\"phx_reply\"}"
-    let [<Literal>] errorResponse : string = "\"status\":\"error\""
-    let selfHealBackoffs : int[] = [| 10_000; 30_000; 60_000; 300_000; 600_000 |]
-    let maxSymbolSize : int = 20
-    let tradeMessageSize : int = 70 //59 used + 11 pad
-    let quoteMessageSize : int = 50 //46 used + 4 pad
-    let refreshMessageSize : int = 50 //42 used + 8 pad
-    let unusualActivityMessageSize : int = 72 //60 used + 12 pad
+    
     let config = LoadConfig()
     let tLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let wsLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
@@ -63,32 +170,7 @@ type Client(
     let data : BlockingCollection<byte[]> = new BlockingCollection<byte[]>(new ConcurrentQueue<byte[]>())
     let mutable tryReconnect : (unit -> unit) = fun () -> ()
     let httpClient : HttpClient = new HttpClient()
-    
-    let getPriceTypeValue (priceType: PriceType) : uint64 =
-        match priceType with
-        | PriceType.One                 -> 1UL
-        | PriceType.Ten                 -> 10UL
-        | PriceType.Hundred             -> 100UL
-        | PriceType.Thousand            -> 1_000UL
-        | PriceType.TenThousand         -> 10_000UL
-        | PriceType.HundredThousand     -> 100_000UL
-        | PriceType.Million             -> 1_000_000UL
-        | PriceType.TenMillion          -> 10_000_000UL
-        | PriceType.HundredMillion      -> 100_000_000UL
-        | PriceType.Billion             -> 1_000_000_000UL
-        | PriceType.FiveHundredTwelve   -> 512UL
-        | PriceType.Zero                -> 0UL
-        | _                             -> failwith ("Invalid PriceType! PriceType: " + (int32 priceType).ToString())
-                
-    let getScaledValueUInt64 (value: uint64, scaler: PriceType) : double =
-        (double value) / (double (getPriceTypeValue(scaler)))
-        
-    let getScaledValueInt32 (value: int, scaler: PriceType) : double =
-        (double value) / (double (getPriceTypeValue(scaler)))
-        
-    let getSecondsSinceUnixEpoch (timestamp : UInt64) : double =
-        (double timestamp) / 1_000_000_000.0
-    
+
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
     let useOnQuote : bool = not (obj.ReferenceEquals(onQuote,null))
     let useOnRefresh : bool = not (obj.ReferenceEquals(onRefresh,null))
@@ -101,106 +183,41 @@ type Client(
 
     let getAuthUrl () : string =
         match config.Provider with
-        | Provider.OPRA
-        | Provider.OPRA_FIREHOSE -> "https://realtime-options.intrinio.com/auth?api_key=" + config.ApiKey
-        | Provider.MANUAL
-        | Provider.MANUAL_FIREHOSE -> "http://" + config.IPAddress + "/auth?api_key=" + config.ApiKey
+        | Provider.OPRA -> "https://realtime-options.intrinio.com/auth?api_key=" + config.ApiKey
+        | Provider.MANUAL -> "http://" + config.IPAddress + "/auth?api_key=" + config.ApiKey
         | _ -> failwith "Provider not specified!"
 
     let getWebSocketUrl (token: string) : string =
         match config.Provider with
-          | Provider.OPRA
-          | Provider.OPRA_FIREHOSE -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token
-          | Provider.MANUAL 
-          | Provider.MANUAL_FIREHOSE -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token
+          | Provider.OPRA -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token
+          | Provider.MANUAL -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token
           | _ -> failwith "Provider not specified!"
     
-    let parseTrade (bytes: ReadOnlySpan<byte>) : Trade =
-        let priceType = enum<PriceType> (int32 (bytes.Item(25))) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4)
-        let underlyingPriceType = enum<PriceType> (int32 (bytes.Item(26))) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1)
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, maxSymbolSize))
-            //EventType positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
-            Price = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(21, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1)
-            //PriceType positionally goes here
-            //UnderlyingPriceType positionally goes here
-            Size = BitConverter.ToUInt32(bytes.Slice(27, 4)) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1)
-            Timestamp = getSecondsSinceUnixEpoch(BitConverter.ToUInt64(bytes.Slice(31, 8))) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4)
-            TotalVolume = BitConverter.ToUInt64(bytes.Slice(39, 8)) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8)
-            AskPriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(47, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8)
-            BidPriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(51, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8) + AskPriceAtExecutionSize(4)
-            UnderlyingPriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(55, 4)), underlyingPriceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceSize(4) + PriceTypeSize(1) + UnderlyingPriceTypeSize(1) + SizeSize(4) + TimestampSize(8) + TotalVolumeSize(8) + AskPriceAtExecutionSize(4) +  + BidPriceAtExecutionSize(4)
-        }
-
-    let parseQuote (bytes: ReadOnlySpan<byte>) : Quote =
-        let priceType = enum<PriceType> (int32 (bytes.Item(21))) // maxSymbolSize - 1 + 1 + EventTypeSize(1)
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, maxSymbolSize))
-            //EventType positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
-            //PriceType positionally goes here
-            AskPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(22, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1)
-            AskSize = BitConverter.ToUInt32(bytes.Slice(26, 4)) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + AskPriceSize(4)
-            BidPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(30, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4)
-            BidSize = BitConverter.ToUInt32(bytes.Slice(34, 4)) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4) + BidPriceSize(4)
-            Timestamp = getSecondsSinceUnixEpoch(BitConverter.ToUInt64(bytes.Slice(38, 8))) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + AskPriceSize(4) + AskSizeSize(4) + BidPriceSize(4) + BidSizeSize(4)
-        }
-
-    let parseRefresh (bytes: ReadOnlySpan<byte>) : Refresh =
-        let priceType = enum<PriceType> (int32 (bytes.Item(21))) // maxSymbolSize - 1 + 1 + EventTypeSize(1)
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, maxSymbolSize))
-            //Event Type positionally goes here and is 1 byte = // maxSymbolSize - 1 + 1
-            //price type positionally goes here
-            OpenInterest = BitConverter.ToUInt32(bytes.Slice(22, 4)) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1)
-            OpenPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(26, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + OpenInterestSize(4)
-            ClosePrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(30, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + OpenInterestSize(4) + OpenPriceSize(4)
-            HighPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(34, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + OpenInterestSize(4) + OpenPriceSize(4) + ClosePriceSize(4)
-            LowPrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(38, 4)), priceType) // maxSymbolSize - 1 + 1 + EventTypeSize(1) + PriceTypeSize(1) + OpenInterestSize(4) + OpenPriceSize(4) + ClosePriceSize(4) + HighPriceSize(4)
-        }
-
-    let parseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
-        let priceType = enum<PriceType> (int32 (bytes.Item(22))) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1)
-        let underlyingPriceType = enum<PriceType> (int32 (bytes.Item(23))) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1)
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, maxSymbolSize))
-            Type = enum<UAType> (int32 (bytes.Item(20))) // maxSymbolSize - 1 + 1
-            Sentiment = enum<UASentiment> (int32 (bytes.Item(21))) // maxSymbolSize - 1 + 1 + TypeSize(1)
-            //priceType positionally here
-            //underlyingPriceType positionally here
-            TotalValue = getScaledValueUInt64(BitConverter.ToUInt64(bytes.Slice(24, 8)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1)
-            TotalSize = BitConverter.ToUInt32(bytes.Slice(32, 4)) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8)
-            AveragePrice = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(36, 4)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4)
-            AskAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(40, 4)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4)
-            BidAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(44, 4)), priceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4)
-            UnderlyingPriceAtExecution = getScaledValueInt32(BitConverter.ToInt32(bytes.Slice(48, 4)), underlyingPriceType) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4)
-            Timestamp = getSecondsSinceUnixEpoch(BitConverter.ToUInt64(bytes.Slice(52, 8))) // maxSymbolSize - 1 + 1 + TypeSize(1) + SentimentSize(1) + PriceTypeSize(1) + UnderlyingPriceType(1) + TotalValueSize(8) + TotalSizeSize(4) + AveragePriceSize(4) + AskAtExecutionSize(4) + BidAtExecutionSize(4) + PriceAtExecutionSize(4)
-        }
-
     let parseSocketMessage (bytes: byte[], startIndex: byref<int>) : unit =
-        let msgType : int = int32 bytes.[startIndex + maxSymbolSize] //This works because it's startIndex + maxSymbolSize - 1 (zero based) + 1 (size of type)
+        let msgType : int = int32 bytes.[startIndex + MAX_SYMBOL_SIZE] //This works because it's startIndex + maxSymbolSize - 1 (zero based) + 1 (size of type)
         if (msgType = 1) //using if-else vs switch for hotpathing
         then
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, quoteMessageSize)
-            let quote: Quote = parseQuote(chunk)
-            startIndex <- startIndex + quoteMessageSize
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, QUOTE_MESSAGE_SIZE)
+            let quote: Quote = ParseQuote(chunk)
+            startIndex <- startIndex + QUOTE_MESSAGE_SIZE
             if useOnQuote then onQuote.Invoke(quote)
         elif (msgType = 0)
         then
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, tradeMessageSize)
-            let trade: Trade = parseTrade(chunk)
-            startIndex <- startIndex + tradeMessageSize
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, TRADE_MESSAGE_SIZE)
+            let trade: Trade = ParseTrade(chunk)
+            startIndex <- startIndex + TRADE_MESSAGE_SIZE
             if useOnTrade then onTrade.Invoke(trade)
         elif (msgType > 2)
         then
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, unusualActivityMessageSize)
-            let ua: UnusualActivity = parseUnusualActivity(chunk)
-            startIndex <- startIndex + unusualActivityMessageSize
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, UNUSUAL_ACTIVITY_MESSAGE_SIZE)
+            let ua: UnusualActivity = ParseUnusualActivity(chunk)
+            startIndex <- startIndex + UNUSUAL_ACTIVITY_MESSAGE_SIZE
             if useOnUA then onUnusualActivity.Invoke(ua)
         elif (msgType = 2)
         then
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, refreshMessageSize)
-            let refresh = parseRefresh(chunk)
-            startIndex <- startIndex + refreshMessageSize
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, REFRESH_MESSAGE_SIZE)
+            let refresh = ParseRefresh(chunk)
+            startIndex <- startIndex + REFRESH_MESSAGE_SIZE
             if useOnRefresh then onRefresh.Invoke(refresh)
         else Log.Warning("Invalid MessageType: {0}", msgType)
 
@@ -213,7 +230,7 @@ type Client(
             wsLock.EnterReadLock()
             try
                 if not(ct.IsCancellationRequested) && wsState.IsReady
-                then wsState.WebSocket.Send(heartbeatMessage)
+                then wsState.WebSocket.Send("")
             finally wsLock.ExitReadLock()
 
     let heartbeat : Thread = new Thread(new ThreadStart(heartbeatFn))
@@ -234,16 +251,6 @@ type Client(
             with :? OperationCanceledException -> ()
 
     let threads : Thread[] = Array.init config.NumThreads (fun _ -> new Thread(new ThreadStart(threadFn)))
-
-    let doBackoff(fn: unit -> bool) : unit =
-        let mutable i : int = 0
-        let mutable backoff : int = selfHealBackoffs.[i]
-        let mutable success : bool = fn()
-        while not success do
-            Thread.Sleep(backoff)
-            i <- Math.Min(i + 1, selfHealBackoffs.Length - 1)
-            backoff <- selfHealBackoffs.[i]
-            success <- fn()
 
     let trySetToken() : bool =
         Log.Information("Authorizing...")
@@ -279,7 +286,7 @@ type Client(
             then (fst token)
             else
                 tLock.EnterWriteLock()
-                try doBackoff(trySetToken)
+                try DoBackoff(trySetToken)
                 finally tLock.ExitWriteLock()
                 fst token
         finally tLock.ExitUpgradeableReadLock()
@@ -299,15 +306,17 @@ type Client(
         if channels.Count > 0
         then
             channels |> Seq.iter (fun (symbol: string) ->
-                let sb : StringBuilder = new StringBuilder()
-                if useOnTrade then sb.Append(",\"trade_data\":\"true\"") |> ignore
-                if useOnQuote then sb.Append(",\"quote_data\":\"true\"") |> ignore
-                if useOnRefresh then sb.Append(",\"refresh_data\":\"true\"") |> ignore
-                if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
-                let subscriptionSelection : string = sb.ToString()
-                let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
-                Log.Information("Websocket - Joining channel: {0:l} ({1:l})", symbol, subscriptionSelection.TrimStart(','))
-                wsState.WebSocket.Send(message) )
+                let mutable mask : uint8 = 0uy
+                if useOnTrade then mask <- SetUsesTrade(mask)
+                if useOnQuote then mask <- SetUsesQuote(mask)
+                if useOnRefresh then mask <- SetUsesRefresh(mask)
+                if useOnUA then mask <- SetUsesUA(mask)
+                let message : byte[] = Array.zeroCreate<byte> (symbol.Length + 2)
+                message[0] <- 74uy
+                message[1] <- mask
+                Array.Copy(Encoding.ASCII.GetBytes(symbol), 0, message, 2, symbol.Length)
+                Log.Information("Websocket - Joining channel: {0:l} [{1:l})]", symbol, String.Join(", ", message))
+                wsState.WebSocket.Send(message, 0, message.Length) )
 
     let onClose (_ : EventArgs) : unit =
         wsLock.EnterUpgradeableReadLock()
@@ -349,16 +358,8 @@ type Client(
     let onMessageReceived (args : MessageReceivedEventArgs) : unit =
         Log.Debug("Websocket - Message received")
         Interlocked.Increment(&textMsgCount) |> ignore
-        if args.Message = heartbeatResponse then Log.Debug("Heartbeat response received")
-        elif args.Message.Contains(errorResponse)
-        then
-            let replyDoc : JsonDocument = JsonDocument.Parse(args.Message)
-            let errorMessage : string = 
-                replyDoc.RootElement
-                    .GetProperty("payload")
-                    .GetProperty("response")
-                    .GetString()
-            Log.Error("Error received: {0:l}", errorMessage)
+        if (args.Message.Length > 0)
+        then Log.Error("Error received: {0:l}", args.Message)
 
     let resetWebSocket(token: string) : unit =
         Log.Information("Websocket - Resetting")
@@ -392,33 +393,28 @@ type Client(
         wsState.WebSocket.Open()
 
     let join(symbol: string) : unit =
-        if (((symbol = "lobby") || (symbol = "lobby_trades_only")) &&
-            ((config.Provider <> Provider.MANUAL_FIREHOSE) && (config.Provider <> Provider.OPRA_FIREHOSE)))
-        then Log.Warning("Only 'FIREHOSE' providers may join the lobby channel")
-        elif (((symbol <> "lobby") && (symbol <> "lobby_trades_only")) &&
-            ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE)))
-        then Log.Warning("'FIREHOSE' providers may only join the lobby channel")
-        else
-            if channels.Add(symbol)
-            then 
-                let sb : StringBuilder = new StringBuilder()
-                if useOnTrade then sb.Append(",\"trade_data\":\"true\"") |> ignore
-                if useOnQuote then sb.Append(",\"quote_data\":\"true\"") |> ignore
-                if useOnRefresh then sb.Append(",\"refresh_data\":\"true\"") |> ignore
-                if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
-                let subscriptionSelection : string = sb.ToString()
-                let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
-                Log.Information("Websocket - Joining channel: {0:l} ({1:l})", symbol, subscriptionSelection.TrimStart(','))
-                try wsState.WebSocket.Send(message)
-                with _ -> channels.Remove(symbol) |> ignore
+        if channels.Add(symbol)
+        then
+            let mutable mask : uint8 = 0uy
+            if useOnTrade then mask <- SetUsesTrade(mask)
+            if useOnQuote then mask <- SetUsesQuote(mask)
+            if useOnRefresh then mask <- SetUsesRefresh(mask)
+            if useOnUA then mask <- SetUsesUA(mask)
+            let message : byte[] = Array.zeroCreate<byte> (symbol.Length + 2)
+            message[0] <- 74uy
+            message[1] <- mask
+            Array.Copy(Encoding.ASCII.GetBytes(symbol), 0, message, 2, symbol.Length)
+            Log.Information("Websocket - Joining channel: {0:l} [{1:l})]", symbol, String.Join(", ", message))
+            wsState.WebSocket.Send(message, 0, message.Length)
 
     let leave(symbol: string) : unit =
         if channels.Remove(symbol)
-        then 
-            let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_leave\",\"payload\":{},\"ref\":null}"
-            Log.Information("Websocket - Leaving channel: {0:l}", symbol)
-            try wsState.WebSocket.Send(message)
-            with _ -> ()
+        then
+            let message : byte[] = Array.zeroCreate<byte> (symbol.Length + 2)
+            message[0] <- 76uy
+            Array.Copy(Encoding.ASCII.GetBytes(symbol), 0, message, 2, symbol.Length)
+            Log.Information("Websocket - Leaving channel: {0:l} [{1:l}]", symbol, String.Join(", ", message))
+            wsState.WebSocket.Send(message, 0, message.Length)
 
     do
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
@@ -440,46 +436,35 @@ type Client(
                             wsState.WebSocket.Open()
                         with _ -> ()
                     false
-            doBackoff(reconnectFn)
+            DoBackoff(reconnectFn)
         let _token : string = getToken()
         initializeWebSockets(_token)
 
     member _.Join() : unit =
-        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
-        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
-        else
-            while not(allReady()) do Thread.Sleep(1000)
-            let symbolsToAdd : HashSet<string> = new HashSet<string>(config.Symbols)
-            symbolsToAdd.ExceptWith(channels)
-            for symbol in symbolsToAdd do join(symbol)
+        while not(allReady()) do Thread.Sleep(1000)
+        let symbolsToAdd : HashSet<string> = new HashSet<string>(config.Symbols)
+        symbolsToAdd.ExceptWith(channels)
+        for symbol in symbolsToAdd do join(symbol)
 
     member _.Join(symbol: string) : unit =
-        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
-        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
-        else
-            if not (String.IsNullOrWhiteSpace(symbol))
-            then
-                while not(allReady()) do Thread.Sleep(1000)
-                if not (channels.Contains(symbol))
-                then join(symbol)
+        if not (String.IsNullOrWhiteSpace(symbol))
+        then
+            while not(allReady()) do Thread.Sleep(1000)
+            if not (channels.Contains(symbol))
+            then join(symbol)
 
     member _.Join(symbols: string[]) : unit =
-        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
-        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
-        else
-            while not(allReady()) do Thread.Sleep(1000)
-            let symbolsToAdd : HashSet<string> = new HashSet<string>(symbols)
-            symbolsToAdd.ExceptWith(channels)
-            for symbol in symbolsToAdd do join(symbol)
+        while not(allReady()) do Thread.Sleep(1000)
+        let symbolsToAdd : HashSet<string> = new HashSet<string>(symbols)
+        symbolsToAdd.ExceptWith(channels)
+        for symbol in symbolsToAdd do join(symbol)
 
     member _.JoinLobby() : unit =
-        if ((config.Provider <> Provider.MANUAL_FIREHOSE) && (config.Provider <> Provider.OPRA_FIREHOSE))
-        then Log.Warning("Only 'FIREHOSE' providers may join the lobby channel")
-        elif (channels.Contains("lobby"))
+        if (channels.Contains("$FIREHOSE"))
         then Log.Warning("This client has already joined the lobby channel")
         else
             while not (allReady()) do Thread.Sleep(1000)
-            join("lobby")
+            join("$FIREHOSE")
 
     member _.Leave() : unit =
         for channel in channels do leave(channel)
@@ -494,8 +479,8 @@ type Client(
         for channel in matchingChannels do leave(channel)
 
     member _.LeaveLobby() : unit =
-        if (channels.Contains("lobby"))
-        then leave("lobby")
+        if (channels.Contains("$FIREHOSE"))
+        then leave("$FIREHOSE")
 
     member _.Stop() : unit =
         for channel in channels do leave(channel)

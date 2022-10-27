@@ -25,6 +25,6 @@ module Config =
         then failwith "You must provide a valid API key"
         if (config.Provider = Provider.NONE)
         then failwith "You must specify a valid 'provider'"
-        if ((config.Provider = Provider.MANUAL) || (config.Provider = Provider.MANUAL_FIREHOSE)) && (String.IsNullOrWhiteSpace(config.IPAddress))
+        if (config.Provider = Provider.MANUAL) && (String.IsNullOrWhiteSpace(config.IPAddress))
         then failwith "You must specify an IP address for manual configuration"
         config

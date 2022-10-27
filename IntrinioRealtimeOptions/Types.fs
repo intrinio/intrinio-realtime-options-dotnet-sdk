@@ -6,9 +6,7 @@ open System.Globalization
 type Provider =
     | NONE = 0
     | OPRA = 1
-    | OPRA_FIREHOSE = 2
-    | MANUAL = 3
-    | MANUAL_FIREHOSE = 4
+    | MANUAL = 2
 
 /// <summary>
 /// A 'Quote' is a unit of data representing an individual market bid or ask event.
