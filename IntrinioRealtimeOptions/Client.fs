@@ -47,10 +47,10 @@ type Client(
     let [<Literal>] errorResponse : string = "\"status\":\"error\""
     let selfHealBackoffs : int[] = [| 10_000; 30_000; 60_000; 300_000; 600_000 |]
     let maxSymbolSize : int = 20
-    let tradeMessageSize : int = 59
-    let quoteMessageSize : int = 46
-    let refreshMessageSize : int = 42
-    let unusualActivityMessageSize : int = 60
+    let tradeMessageSize : int = 70 //59 used + 11 pad
+    let quoteMessageSize : int = 50 //46 used + 4 pad
+    let refreshMessageSize : int = 50 //42 used + 8 pad
+    let unusualActivityMessageSize : int = 72 //60 used + 12 pad
     let config = LoadConfig()
     let tLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let wsLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
