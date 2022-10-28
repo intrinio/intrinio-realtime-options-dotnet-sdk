@@ -55,7 +55,7 @@ module private ClientInline =
              BitConverter.ToInt32(bytes.Slice(28, 4)),
              BitConverter.ToInt32(bytes.Slice(32, 4)),
              BitConverter.ToInt32(bytes.Slice(36, 4)),
-             BitConverter.ToInt32(bytes.Slice(34, 4)))
+             BitConverter.ToInt32(bytes.Slice(40, 4)))
 
     let inline internal ParseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
         UnusualActivity
