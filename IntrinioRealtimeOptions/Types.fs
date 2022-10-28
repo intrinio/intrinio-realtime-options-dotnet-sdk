@@ -228,10 +228,10 @@ type UASentiment =
 /// <param name="Timestamp">The time that the unusual activity began (a unix timestamp representing the number of seconds (or better) since the unix epoch).</param>
 type UnusualActivity internal
     (sym: string,
-     pt: uint8,
-     upt: uint8,
      uat: UAType,
      s: UASentiment,
+     pt: uint8,
+     upt: uint8,     
      tv: uint64,
      ts: uint32,
      ap: int32,

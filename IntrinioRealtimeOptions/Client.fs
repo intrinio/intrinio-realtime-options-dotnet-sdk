@@ -60,10 +60,10 @@ module private ClientInline =
     let inline internal ParseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
         UnusualActivity
             (Encoding.ASCII.GetString(bytes.Slice(1, int bytes[0])),
-             bytes[24],
-             bytes[25],
              enum<UAType> (int bytes[22]),
              enum<UASentiment> (int bytes[23]),
+             bytes[24],
+             bytes[25],             
              BitConverter.ToUInt64(bytes.Slice(26, 8)),
              BitConverter.ToUInt32(bytes.Slice(34, 4)),
              BitConverter.ToInt32(bytes.Slice(38, 4)),
