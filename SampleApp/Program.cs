@@ -80,20 +80,20 @@ namespace SampleApp
 			_timer = new Timer(TimerCallback, _client, 10_000, 10_000);
 
 			// Use this to subscribe to a static list of symbols (option contracts) provided in config.json
-			//client.Join();
+			//_client.Join();
 
 			// Use this to subscribe to the entire universe of symbols (option contracts). This requires special permission.
-			//client.JoinLobby();
+			//_client.JoinLobby();
 
 			// Use this to subscribe, dynamically, to an option chain (all option contracts for a given underlying symbol).
-			//client.Join("AAPL");
+			//_client.Join("AAPL");
 
 			// Use this to subscribe, dynamically, to a specific option contract.
-			//client.Join("AAPL_230616P250.000");
+			//_client.Join("AAPL_230616P250.000");
 
 			// Use this to subscribe, dynamically, a list of specific option contracts or option chains.
 			//string[] clients = { "GOOG_220408C2870.000", "MSFT_220408C315.000", "AAPL_220414C180.000", "TSLA", "GE" };
-            //client.Join(clients);
+            //_client.Join(clients);
 
 			Console.CancelKeyPress += new ConsoleCancelEventHandler(Cancel);
 		}		
