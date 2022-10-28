@@ -74,7 +74,7 @@ type Quote internal
 
     member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_'), 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
     member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
 
@@ -131,7 +131,7 @@ type Trade internal
 
     member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_'), 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
     member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
 
@@ -183,7 +183,7 @@ type Refresh internal
 
     member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_'), 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
     member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
     
@@ -264,7 +264,7 @@ type UnusualActivity internal
 
     member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_'), 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
     member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
 
