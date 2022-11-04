@@ -48,7 +48,7 @@ module private TypesInline =
 /// <param name="BidSize">The number of contacts for the bid.</param>
 /// <param name="Timestamp">The time that the Quote was made (a unix timestamp representing the number of seconds (or better) since the unix epoch).</param>
 type Quote internal
-    (sym: string,
+    (cont: string,
      pt: uint8,
      aPrice: int32,
      aSize: uint32,
@@ -56,7 +56,7 @@ type Quote internal
      bSize: uint32,
      ts: uint64) =
 
-    member _.Symbol with get() : string = sym
+    member _.Contract with get() : string = cont
     member _.AskPrice with get() : float =
         if (aPrice = Int32.MaxValue) || (aPrice = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(aPrice, pt)
     member _.AskSize with get() : uint32 = aSize
@@ -66,21 +66,21 @@ type Quote internal
     member _.Timestamp with get() : float = TypesInline.ScaleTimestamp(ts)
 
     member this.GetStrikePrice() : float32 =
-        let i: int = this.Symbol.IndexOf('_')
-        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((i + 8), (this.Symbol.Length - (i + 8)))
+        let i: int = this.Contract.IndexOf('_')
+        let chunk: ReadOnlySpan<char> = this.Contract.AsSpan((i + 8), (this.Contract.Length - (i + 8)))
         Single.Parse(chunk)
 
-    member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
+    member this.IsPut() : bool = this.Contract.[this.Contract.IndexOf('_') + 7] = 'P'
 
-    member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
+    member this.IsCall() : bool = this.Contract.[this.Contract.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(this.Contract.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, this.Contract.IndexOf('_')).TrimEnd('_')
 
     override this.ToString() : string =
         sprintf "Quote (Symbol: %s, AskPrice: %s, AskSize: %s, BidPrice: %s, BidSize: %s, Timestamp: %s)"
-            this.Symbol
+            this.Contract
             (this.AskPrice.ToString("f3"))
             (this.AskSize.ToString())
             (this.BidPrice.ToString("f3"))
@@ -99,7 +99,7 @@ type Quote internal
 /// <param name="BidPriceAtExecution">The dollar price of the best bid at execution.</param>
 /// <param name="UnderlyingPriceAtExecution">The dollar price of the underlying security at the time of execution.</param>
 type Trade internal
-    (sym: string,
+    (cont: string,
      pt: uint8,
      upt: uint8,
      p: int32,
@@ -109,7 +109,7 @@ type Trade internal
      ape: int32,
      bpe: int32,
      upe: int32) =
-    member _.Symbol with get() : string = sym
+    member _.Contract with get() : string = cont
     member _.Price with get() : float =
         if (p = Int32.MaxValue) || (p = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(p, pt)
     member _.Size with get() : uint32 = s
@@ -123,21 +123,21 @@ type Trade internal
         if (upe = Int32.MaxValue) || (upe = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(upe, upt)
     
     member this.GetStrikePrice() : float32 =
-        let i: int = this.Symbol.IndexOf('_')
-        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((i + 8), (this.Symbol.Length - (i + 8)))
+        let i: int = this.Contract.IndexOf('_')
+        let chunk: ReadOnlySpan<char> = this.Contract.AsSpan((i + 8), (this.Contract.Length - (i + 8)))
         Single.Parse(chunk)
 
-    member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
+    member this.IsPut() : bool = this.Contract.[this.Contract.IndexOf('_') + 7] = 'P'
 
-    member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
+    member this.IsCall() : bool = this.Contract.[this.Contract.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(this.Contract.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, this.Contract.IndexOf('_')).TrimEnd('_')
 
     override this.ToString() : string =
         sprintf "Trade (Symbol: %s, Price: %s, Size: %s, Timestamp: %s, TotalVolume: %s, AskPriceAtExecution: %s, BidPriceAtExecution: %s, UnderlyingPrice: %s)"
-            this.Symbol
+            this.Contract
             (this.Price.ToString("f3"))
             (this.Size.ToString())
             (this.Timestamp.ToString("f6"))
@@ -156,14 +156,14 @@ type Trade internal
 /// <param name="HighPrice">The running high price for this contract today.</param>
 /// <param name="LowPrice">The running low price for this contract today.</param>
 type Refresh internal
-    (sym: string,
+    (cont: string,
      pt: uint8,
      oi: uint32,
      o: int32,
      c: int32,
      h: int32,
      l: int32) =
-    member _.Symbol with get() : string = sym
+    member _.Contract with get() : string = cont
     member _.OpenInterest with get() : uint32 = oi
     member _.OpenPrice with get() : float =
         if (o = Int32.MaxValue) || (o = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(o, pt)
@@ -175,21 +175,21 @@ type Refresh internal
         if (l = Int32.MaxValue) || (l = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(l, pt)
 
     member this.GetStrikePrice() : float32 =
-        let i: int = this.Symbol.IndexOf('_')
-        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((i + 8), (this.Symbol.Length - (i + 8)))
+        let i: int = this.Contract.IndexOf('_')
+        let chunk: ReadOnlySpan<char> = this.Contract.AsSpan((i + 8), (this.Contract.Length - (i + 8)))
         Single.Parse(chunk)
 
-    member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
+    member this.IsPut() : bool = this.Contract.[this.Contract.IndexOf('_') + 7] = 'P'
 
-    member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
+    member this.IsCall() : bool = this.Contract.[this.Contract.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(this.Contract.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, this.Contract.IndexOf('_')).TrimEnd('_')
     
     override this.ToString() : string =
         sprintf "Refresh (Symbol: %s, OpenInterest: %s, OpenPrice: %s, ClosePrice: %s, HighPrice: %s, LowPrice: %s)"
-            this.Symbol
+            this.Contract
             (this.OpenInterest.ToString())
             (this.OpenPrice.ToString("f3"))
             (this.ClosePrice.ToString("f3"))
@@ -227,7 +227,7 @@ type UASentiment =
 /// <param name="UnderlyingPriceAtExecution">The dollar price of the underlying security at the time of execution.</param>
 /// <param name="Timestamp">The time that the unusual activity began (a unix timestamp representing the number of seconds (or better) since the unix epoch).</param>
 type UnusualActivity internal
-    (sym: string,
+    (cont: string,
      uat: UAType,
      s: UASentiment,
      pt: uint8,
@@ -239,7 +239,7 @@ type UnusualActivity internal
      bpe: int32,
      upe: int32,
      t: uint64) =
-    member _.Symbol with get() : string = sym
+    member _.Contract with get() : string = cont
     member _.Type with get() : UAType = uat
     member _.Sentiment with get() : UASentiment = s
     member _.TotalValue with get() : float =
@@ -256,21 +256,21 @@ type UnusualActivity internal
     member _.Timestamp with get() : float = TypesInline.ScaleTimestamp(t)
 
     member this.GetStrikePrice() : float32 =
-        let i: int = this.Symbol.IndexOf('_')
-        let chunk: ReadOnlySpan<char> = this.Symbol.AsSpan((i + 8), (this.Symbol.Length - (i + 8)))
+        let i: int = this.Contract.IndexOf('_')
+        let chunk: ReadOnlySpan<char> = this.Contract.AsSpan((i + 8), (this.Contract.Length - (i + 8)))
         Single.Parse(chunk)
 
-    member this.IsPut() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'P'
+    member this.IsPut() : bool = this.Contract.[this.Contract.IndexOf('_') + 7] = 'P'
 
-    member this.IsCall() : bool = this.Symbol.[this.Symbol.IndexOf('_') + 7] = 'C'
+    member this.IsCall() : bool = this.Contract.[this.Contract.IndexOf('_') + 7] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Symbol.Substring(this.Symbol.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(this.Contract.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = this.Symbol.Substring(0, this.Symbol.IndexOf('_')).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, this.Contract.IndexOf('_')).TrimEnd('_')
 
     override this.ToString() : string =
         sprintf "UnusualActivity (Symbol: %s, Type: %s, Sentiment: %s, TotalValue: %s, TotalSize: %s, AveragePrice: %s, AskAtExecution: %s, BidAtExecution: %s, UnderlyingPriceAtExecution: %s, Timestamp: %s)"
-            this.Symbol
+            this.Contract
             (this.Type.ToString())
             (this.Sentiment.ToString())
             (this.TotalValue.ToString("f3"))
