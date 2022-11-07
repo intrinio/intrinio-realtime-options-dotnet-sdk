@@ -14,7 +14,7 @@ namespace SampleApp
 		private static UInt64 _blockCount = 0L;
 		private static UInt64 _sweepCount = 0L;
 		private static UInt64 _largeTradeCount = 0L;
-		private static UInt64 _goldenCount = 0L;
+		private static UInt64 _unusualSweepCount = 0L;
 
 		static void OnQuote(Quote quote)
 		{
@@ -44,8 +44,8 @@ namespace SampleApp
 				case UAType.Large:
 					Interlocked.Increment(ref _largeTradeCount);
 					break;
-				case UAType.Golden:
-					Interlocked.Increment(ref _goldenCount);
+				case UAType.UnusualSweep:
+					Interlocked.Increment(ref _unusualSweepCount);
 					break;
 				default:
 					Client.Log("Invalid UA type detected: {0}", unusualActivity.Type);
@@ -58,7 +58,7 @@ namespace SampleApp
 			Client client = (Client) obj;
 			Tuple<UInt64, UInt64, int> stats = client.GetStats();
 			Client.Log("CLIENT STATS - Data Messages = {0}, Text Messages = {1}, Queue Depth = {2}", stats.Item1, stats.Item2, stats.Item3);
-			Client.Log("PROGRAM STATS - Trades = {0}, Quotes = {1}, Refreshes = {2}, Blocks = {3}, Sweeps = {4}, Large Trades = {5}, Golden = {6}", _tradeCount, _quoteCount, _refreshCount, _blockCount, _sweepCount, _largeTradeCount, _goldenCount);
+			Client.Log("PROGRAM STATS - Trades = {0}, Quotes = {1}, Refreshes = {2}, Blocks = {3}, Sweeps = {4}, Large Trades = {5}, UnusualSweeps = {6}", _tradeCount, _quoteCount, _refreshCount, _blockCount, _sweepCount, _largeTradeCount, _unusualSweepCount);
 		}
 
 		static void Cancel(object sender, ConsoleCancelEventArgs args)

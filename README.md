@@ -20,10 +20,10 @@ For a sample .NET project see: [intrinio-realtime-options-dotnet-sdk](https://gi
 * Receive streaming, real-time option price updates:
 	* every trade
 	* conflated bid and ask
-	* open interest
-	* unusual activity(block trades, sweeps, whale trades)
+	* open interest, open, close, high, low
+	* unusual activity(block trades, sweeps, whale trades, unusual sweeps)
 * Subscribe to updates from individual options contracts (or option chains)
-* Subscribe to updates for the entire univers of option contracts (~1.5M option contracts)
+* Subscribe to updates for the entire universe of option contracts (~1.5M option contracts)
 
 ## Example Usage
 ```csharp
@@ -35,115 +35,105 @@ namespace SampleApp
 {
 	class Program
 	{
-		private static Client client = null;
-		private static Timer timer = null;
-		private static int tradeCount = 0;
-		private static int askCount = 0;
-		private static int bidCount = 0;
-		private static int openInterestCount = 0;
-		private static int blockCount = 0;
-		private static int sweepCount = 0;
-		private static int largeTradeCount = 0;
-
-		private static readonly object obj = new object();
+		private static Client _client = null;
+		private static Timer _timer = null;
+		private static UInt64 _tradeCount = 0L;
+		private static UInt64 _quoteCount = 0L;
+		private static UInt64 _refreshCount = 0L;
+		private static UInt64 _blockCount = 0L;
+		private static UInt64 _sweepCount = 0L;
+		private static UInt64 _largeTradeCount = 0L;
+		private static UInt64 _unusualSweepCount = 0L;
 
 		static void OnQuote(Quote quote)
 		{
-			if (quote.Type == QuoteType.Ask)
-			{
-				Interlocked.Increment(ref askCount);
-			}
-			else if (quote.Type == QuoteType.Bid)
-			{
-				Interlocked.Increment(ref bidCount);
-			}
-			else
-            {
-				Client.Log("Invalid quote type detected: {0}", quote.Type);
-            }
+			Interlocked.Increment(ref _quoteCount);
 		}
 
 		static void OnTrade(Trade trade)
 		{
-			Interlocked.Increment(ref tradeCount);
+			Interlocked.Increment(ref _tradeCount);
 		}
 
-		static void OnOpenInterest(OpenInterest openInterest)
+		static void OnRefresh(Refresh refresh)
 		{
-			Interlocked.Increment(ref openInterestCount);
+			Interlocked.Increment(ref _refreshCount);
 		}
 
 		static void OnUnusualActivity(UnusualActivity unusualActivity)
 		{
-			if (unusualActivity.Type == UAType.Block)
-            {
-				Interlocked.Increment(ref blockCount);
-            } else if (unusualActivity.Type == UAType.Sweep)
-            {
-				Interlocked.Increment(ref sweepCount);
-            } else if (unusualActivity.Type == UAType.Large)
-            {
-				Interlocked.Increment(ref largeTradeCount);
-            } else
-            {
-				Client.Log("Invalid UA type detected: {0}", unusualActivity.Type);
+			switch (unusualActivity.Type)
+			{
+				case UAType.Block:
+					Interlocked.Increment(ref _blockCount);
+					break;
+				case UAType.Sweep:
+					Interlocked.Increment(ref _sweepCount);
+					break;
+				case UAType.Large:
+					Interlocked.Increment(ref _largeTradeCount);
+					break;
+				case UAType.UnusualSweep:
+					Interlocked.Increment(ref _unusualSweepCount);
+					break;
+				default:
+					Client.Log("Invalid UA type detected: {0}", unusualActivity.Type);
+					break;
 			}
 		}
 
 		static void TimerCallback(object obj)
 		{
 			Client client = (Client) obj;
-			Tuple<Int64, Int64, int> stats = client.GetStats();
+			Tuple<UInt64, UInt64, int> stats = client.GetStats();
 			Client.Log("CLIENT STATS - Data Messages = {0}, Text Messages = {1}, Queue Depth = {2}", stats.Item1, stats.Item2, stats.Item3);
-			Client.Log("PROGRAM STATS - Trades = {0}, Asks = {1}, Bids = {2}, OIs = {3}, Blocks = {4}, Sweeps = {5}, Large Trades = {6}", tradeCount, askCount, bidCount, openInterestCount, blockCount, sweepCount, largeTradeCount);
+			Client.Log("PROGRAM STATS - Trades = {0}, Quotes = {1}, Refreshes = {2}, Blocks = {3}, Sweeps = {4}, Large Trades = {5}, UnusualSweeps = {6}", _tradeCount, _quoteCount, _refreshCount, _blockCount, _sweepCount, _largeTradeCount, _unusualSweepCount);
 		}
 
 		static void Cancel(object sender, ConsoleCancelEventArgs args)
 		{
 			Client.Log("Stopping sample app");
-			timer.Dispose();
-			client.Stop();
+			_timer.Dispose();
+			_client.Stop();
 			Environment.Exit(0);
 		}
 
 		static void Main(string[] args)
 		{
 			Client.Log("Starting sample app");
-			
+
 			// Register only the callbacks that you want.
 			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
-			client = new Client(onTrade: OnTrade, onQuote: OnQuote, onOpenInterest: OnOpenInterest, onUnusualActivity: OnUnusualActivity);
+			_client = new Client(onTrade: OnTrade, onQuote: OnQuote, onRefresh: OnRefresh, onUnusualActivity: OnUnusualActivity);
 			
-			timer = new Timer(TimerCallback, client, 10000, 10000);
+			_timer = new Timer(TimerCallback, _client, 10_000, 10_000);
 
 			// Use this to subscribe to a static list of symbols (option contracts) provided in config.json
-			//client.Join();
+			//_client.Join();
 
-			// Use this to subscribe to the entire univers of symbols (option contracts). This requires special permission.
-			//client.JoinLobby();
+			// Use this to subscribe to the entire universe of symbols (option contracts). This requires special permission.
+			//_client.JoinLobby();
 
 			// Use this to subscribe, dynamically, to an option chain (all option contracts for a given underlying symbol).
-			//client.Join("AAPL");
+			//_client.Join("AAPL");
 
 			// Use this to subscribe, dynamically, to a specific option contract.
-			//client.Join("AAP___230616P00250000");
+			//_client.Join("AAPL_230616P250.000");
 
 			// Use this to subscribe, dynamically, a list of specific option contracts or option chains.
-			//string[] clients = { "GOOG__220408C02870000", "MSFT__220408C00315000", "AAPL__220414C00180000", "TSLA", "GE" };
-            //client.Join(clients);
+			//string[] clients = { "GOOG_220408C2870.000", "MSFT_220408C315.000", "AAPL_220414C180.000", "TSLA", "GE" };
+            //_client.Join(clients);
 
 			Console.CancelKeyPress += new ConsoleCancelEventHandler(Cancel);
 		}		
 	}
 }
-
-
 ```
 
 ## Handling Quotes
 
 There are millions of options contracts, each with their own feed of activity.
-We highly encourage you to make your OnTrade, OnQuote, OnUnusualActivity, and OnOpenInterest methods has short as possible and follow a queue pattern so your app can handle the large volume of activity.
+We highly encourage you to make your OnTrade, OnQuote, OnUnusualActivity, and OnRefresh methods has short as possible and follow a queue pattern so your app can handle the large volume of activity.
 Note that quotes (ask and bid updates) comprise 99% of the volume of the entire feed. Be cautious when deciding to receive quote updates.
 
 ## Providers
@@ -158,93 +148,68 @@ Currently, Intrinio offers realtime data for this SDK from the following provide
 ### Trade Message
 
 ```fsharp
-type [<Struct>] Trade =
-    {
-        Symbol : string
-        Price : float
-        Size : uint32
-        TotalVolume : uint64
-        Timestamp : float
-    }
+type Trade
 ```
 
-* **Symbol** - Identifier for the options contract.  This includes the ticker symbol, put/call, expiry, and strike price.
+* **Contract** - Identifier for the options contract.  This includes the ticker symbol, put/call, expiry, and strike price.
 * **Price** - the price in USD
 * **Size** - the size of the last trade in hundreds (each contract is for 100 shares).
 * **TotalVolume** - The number of contracts traded so far today.
 * **Timestamp** - a Unix timestamp (with microsecond precision)
+* **AskPriceAtExecution** - the best last ask price in USD
+* **BidPriceAtExecution** - the best last bid price in USD
+* **UnderlyingPriceAtExecution** - the price of the underlying security in USD
 
 
 ### Quote Message
 
 ```fsharp
-type [<Struct>] Quote =
-    {
-        Type : QuoteType 
-        Symbol : string
-        Price : float
-        Size : uint32
-        Timestamp : float
-    }
+type Quote
 ```
 
-* **Type** - the quote type
-  *    **`Ask`** - represents an ask type
-  *    **`Bid`** - represents a bid type  
-* **Symbol** - Identifier for the options contract.  This includes the ticker symbol, put/call, expiry, and strike price.
-* **Price** - the price in USD
-* **Size** - the size of the last ask or bid in hundreds (each contract is for 100 shares).
+* **Contract** - Identifier for the options contract.  This includes the ticker symbol, put/call, expiry, and strike price.
+* **AskPrice** - the last best ask price in USD
+* **AskSize** - the last best ask size in hundreds (each contract is for 100 shares).
+* **BidPrice** - the last best bid price in USD
+* **BidSize** - the last best bid size in hundreds (each contract is for 100 shares).
 * **Timestamp** - a Unix timestamp (with microsecond precision)
 
 
-### Open Interest Message
+### Refresh Message
 
 ```fsharp
-type [<Struct>] OpenInterest =
-    {
-        Symbol : string
-        OpenInterest : int32
-        Timestamp : float
-    }
+type Refresh
 ```
 
-* **Symbol** - Identifier for the options contract.  This includes the ticker symbol, put/call, expiry, and strike price.
-* **Timestamp** - a Unix timestamp (with microsecond precision)
+* **Contract** - Identifier for the options contract.  This includes the ticker symbol, put/call, expiry, and strike price.
 * **OpenInterest** - the total quantity of opened contracts as reported at the start of the trading day
+* **OpenPrice** - the open price price in USD
+* **ClosePrice** - the close price in USD
+* **HighPrice** - the current high price in USD
+* **LowPrice** - the current low price in USD
 
 ### Unusual Activity Message
 
 ```fsharp
-type [<Struct>] UnusualActivity =
-    {
-        Symbol : string
-        Type : UAType
-        Sentiment : UASentiment
-        TotalValue : single
-        TotalSize : uint32
-        AveragePrice : single
-        AskAtExecution : single
-        BidAtExecution : single
-        PriceAtExecution : single
-        Timestamp : double
-    }
+type UnusualActivity
 ```
 
-* **Symbol** - Identifier for the options contract.  This includes the ticker symbol, put/call, expiry, and strike price.
+* **Contract** - Identifier for the options contract.  This includes the ticker symbol, put/call, expiry, and strike price.
 * **Type** - The type of unusual activity that was detected
-  *    **`Block`** - represents an 'block' trade
-  *    **`Sweep`** - represents an intermarket sweep
-  *    **`Large`** - represents a trade of at least $100,000
+  * **`Block`** - represents an 'block' trade
+  * **`Sweep`** - represents an intermarket sweep
+  * **`Large`** - represents a trade of at least $100,000
+  * **`Unusual Sweep`** - represents an unusually large sweep near market open.
 * **Sentiment** - The sentiment of the unusual activity event
   *    **`Neutral`** - 
   *    **`Bullish`** - 
   *    **`Bearish`** - 
 * **TotalValue** - The total value of the trade in USD. 'Sweeps' and 'blocks' can be comprised of multiple trades. This is the value of the entire event.
-* **TotalValue** - The total size of the trade in number of contracts. 'Sweeps' and 'blocks' can be comprised of multiple trades. This is the total number of contracts exchanged during the event.
+* **TotalSize** - The total size of the trade in number of contracts. 'Sweeps' and 'blocks' can be comprised of multiple trades. This is the total number of contracts exchanged during the event.
 * **AveragePrice** - The average price at which the trade was executed. 'Sweeps' and 'blocks' can be comprised of multiple trades. This is the average trade price for the entire event.
-* **AskAtExecution** - The 'ask' price of the underlying at execution of the trade event.
-* **BidAtExecution** - The 'bid' price of the underlying at execution of the trade event.
-* **PriceAtExecution** - The last trade price of the underlying at execution of the trade event.
+* **AskPriceAtExecution** - The 'ask' price of the underlying at execution of the trade event.
+* **BidPriceAtExecution** - The 'bid' price of the underlying at execution of the trade event.
+* **UnderlyingPriceAtExecution** - The last trade price of the underlying at execution of the trade event.
 * **Timestamp** - a Unix timestamp (with microsecond precision).
 
 ## API Keys
@@ -269,10 +234,10 @@ If you wish to perform a graceful shutdown of the application, please call the `
 
 ### Methods
 
-`Client client = new Client(OnTrade, OnQuote, OnOpenInterest, OnUnusualActivity);` - Creates an Intrinio Real-Time client. The provided actions implement OnTrade, OnQuote, OnOpenInterest, and OnUnusualActivity which handle what happens when the associated event happens.
+`Client client = new Client(OnTrade, OnQuote, OnRefresh, OnUnusualActivity);` - Creates an Intrinio Real-Time client. The provided actions implement OnTrade, OnQuote, OnRefresh, and OnUnusualActivity which handle what happens when the associated event happens.
 * **Parameter** `onTrade`: The Action accepting trades. If no `onTrade` callback is provided, you will not receive trade updates from the server.
 * **Parameter** `onQuote`: The Action accepting quotes. If no `onQuote` callback is provided, you will not receive quote (ask, bid) updates from the server.
-* **Parameter** `onOpenInterest`: The Action accepting open interest messages. If no `onOpenInterest` callback is provided, you will not receive open interest data from the server. Note: open interest data is only updated at the beginning of every trading day. If this callback is provided you will recieve an update immediately, as well as every 15 minutes (approx).
+* **Parameter** `onRefresh`: The Action accepting refresh messages. If no `onRefresh` callback is provided, you will not receive open interest, open, close, high, low data from the server. Note: open interest data is only updated at the beginning of every trading day. If this callback is provided you will recieve an update immediately, as well as every 15 minutes (approx).
 * **Parameter** `onUnusualActivity`: The Action accepting unusual activity events. If no `onUnusualActivity` callback is provided, you will not receive unusual activity updates from the server.
 
 ---------

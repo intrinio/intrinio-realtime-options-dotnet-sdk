@@ -203,7 +203,7 @@ type UAType =
     | Block = 3
     | Sweep = 4
     | Large = 5
-    | Golden = 6
+    | UnusualSweep = 6
 
 /// <summary>
 /// Unusual activity sentiment.
