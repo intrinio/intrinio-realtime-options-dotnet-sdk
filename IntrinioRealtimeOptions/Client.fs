@@ -272,7 +272,7 @@ type Client(
                 message[0] <- 74uy
                 message[1] <- mask
                 Array.Copy(Encoding.ASCII.GetBytes(symbol), 0, message, 2, symbol.Length)
-                Log.Information("Websocket - Joining channel: {0:l} [{1:l})]", symbol, String.Join(", ", message))
+                Log.Information("Websocket - Joining channel: {0:l}", symbol)
                 wsState.WebSocket.Send(message, 0, message.Length) )
 
     let onClose (_ : EventArgs) : unit =
