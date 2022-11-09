@@ -370,7 +370,7 @@ type Client(
             let message : byte[] = Array.zeroCreate<byte> (symbol.Length + 2)
             message[0] <- 76uy
             Array.Copy(Encoding.ASCII.GetBytes(symbol), 0, message, 2, symbol.Length)
-            Log.Information("Websocket - Leaving channel: {0:l} [{1:l}]", symbol, String.Join(", ", message))
+            Log.Information("Websocket - Leaving channel: {0:l}", symbol)
             wsState.WebSocket.Send(message, 0, message.Length)
 
     do
