@@ -217,7 +217,7 @@ type UASentiment =
 /// An 'UnusualActivity' is an event that indicates unusual trading activity.
 /// </summary>
 /// <param name="Symbol">The id of the option contract (e.g. AAPL_210305C350.00).</param>
-/// <param name="Type">The type of unusual activity.</param>
+/// <param name="UnusualActivityType">The type of unusual activity.</param>
 /// <param name="Sentiment">Bullish or Bearish.</param>
 /// <param name="TotalValue">The total value in dollars of the unusual trading activity.</param>
 /// <param name="TotalSize">The total number of contracts of the unusual trading activity.</param>
@@ -240,7 +240,7 @@ type UnusualActivity internal
      upe: int32,
      t: uint64) =
     member _.Contract with get() : string = cont
-    member _.Type with get() : UAType = uat
+    member _.UnusualActivityType with get() : UAType = uat
     member _.Sentiment with get() : UASentiment = s
     member _.TotalValue with get() : float =
         if (tv = UInt64.MaxValue) || (tv = 0UL) then Double.NaN else TypesInline.ScaleUInt64Price(tv, pt)
@@ -271,7 +271,7 @@ type UnusualActivity internal
     override this.ToString() : string =
         sprintf "UnusualActivity (Symbol: %s, Type: %s, Sentiment: %s, TotalValue: %s, TotalSize: %s, AveragePrice: %s, AskAtExecution: %s, BidAtExecution: %s, UnderlyingPriceAtExecution: %s, Timestamp: %s)"
             this.Contract
-            (this.Type.ToString())
+            (this.UnusualActivityType.ToString())
             (this.Sentiment.ToString())
             (this.TotalValue.ToString("f3"))
             (this.TotalSize.ToString())

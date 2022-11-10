@@ -33,7 +33,7 @@ namespace SampleApp
 
 		static void OnUnusualActivity(UnusualActivity unusualActivity)
 		{
-			switch (unusualActivity.Type)
+			switch (unusualActivity.UnusualActivityType)
 			{
 				case UAType.Block:
 					Interlocked.Increment(ref _blockCount);
@@ -48,7 +48,7 @@ namespace SampleApp
 					Interlocked.Increment(ref _unusualSweepCount);
 					break;
 				default:
-					Client.Log("Invalid UA type detected: {0}", unusualActivity.Type);
+					Client.Log("Invalid UA type detected: {0}", unusualActivity.UnusualActivityType);
 					break;
 			}
 		}
@@ -80,7 +80,7 @@ namespace SampleApp
 			_timer = new Timer(TimerCallback, _client, 10_000, 10_000);
 
 			// Use this to subscribe to a static list of symbols (option contracts) provided in config.json
-			//_client.Join();
+			_client.Join();
 
 			// Use this to subscribe to the entire universe of symbols (option contracts). This requires special permission.
 			//_client.JoinLobby();

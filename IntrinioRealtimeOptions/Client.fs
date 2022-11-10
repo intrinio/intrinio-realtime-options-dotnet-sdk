@@ -350,27 +350,29 @@ type Client(
         wsState.WebSocket.Open()
 
     let join(symbol: string) : unit =
-        if channels.Add(symbol)
+        let translatedSymbol : string = Config.TranslateContract(symbol)
+        if channels.Add(translatedSymbol)
         then
             let mutable mask : uint8 = 0uy
             if useOnTrade then mask <- ClientInline.SetUsesTrade(mask)
             if useOnQuote then mask <- ClientInline.SetUsesQuote(mask)
             if useOnRefresh then mask <- ClientInline.SetUsesRefresh(mask)
             if useOnUA then mask <- ClientInline.SetUsesUA(mask)
-            let message : byte[] = Array.zeroCreate<byte> (symbol.Length + 2)
+            let message : byte[] = Array.zeroCreate<byte> (translatedSymbol.Length + 2)
             message[0] <- 74uy
             message[1] <- mask
-            Array.Copy(Encoding.ASCII.GetBytes(symbol), 0, message, 2, symbol.Length)
-            Log.Information("Websocket - Joining channel: {0:l}", symbol)
+            Array.Copy(Encoding.ASCII.GetBytes(translatedSymbol), 0, message, 2, translatedSymbol.Length)
+            Log.Information("Websocket - Joining channel: {0:l}", translatedSymbol)
             wsState.WebSocket.Send(message, 0, message.Length)
 
     let leave(symbol: string) : unit =
-        if channels.Remove(symbol)
+        let translatedSymbol : string = Config.TranslateContract(symbol)
+        if channels.Remove(translatedSymbol)
         then
-            let message : byte[] = Array.zeroCreate<byte> (symbol.Length + 2)
+            let message : byte[] = Array.zeroCreate<byte> (translatedSymbol.Length + 2)
             message[0] <- 76uy
-            Array.Copy(Encoding.ASCII.GetBytes(symbol), 0, message, 2, symbol.Length)
-            Log.Information("Websocket - Leaving channel: {0:l}", symbol)
+            Array.Copy(Encoding.ASCII.GetBytes(translatedSymbol), 0, message, 2, translatedSymbol.Length)
+            Log.Information("Websocket - Leaving channel: {0:l}", translatedSymbol)
             wsState.WebSocket.Send(message, 0, message.Length)
 
     do
