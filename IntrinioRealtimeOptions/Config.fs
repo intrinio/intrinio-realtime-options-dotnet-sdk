@@ -18,13 +18,13 @@ module Config =
         if ((contract.Length <= 9) || (contract.IndexOf(".")>=9))
         then
             contract
-        else //this is of the old format and we need to translate it. ex: AAPL__220101C00140000, TSLA__221111P00195000
+        else //this is of the old format and we need to translate it to what the server understands. input: AAPL__220101C00140000, TSLA__221111P00195000 
             let symbol : string = contract.Substring(0, 6).TrimEnd('_')
             let date : string = contract.Substring(6, 6)
             let callPut : char = contract[12]
             let mutable wholePrice : string = contract.Substring(13, 5).TrimStart('0')
             if wholePrice = String.Empty
-            then wholePrice <- "0"
+            then wholePrice <- "0" 
             let mutable decimalPrice : string = contract.Substring(18)
             if decimalPrice[2] = '0'
             then
