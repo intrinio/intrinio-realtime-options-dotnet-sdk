@@ -59,16 +59,28 @@ type Quote internal
     member _.Contract with get() : string =
         //Transform from server format to normal format
         //From this: AAPL_201016C100.00 or ABC_201016C100.003
-        //To this:   AAPL__201016C00100000 or ABC___201016C00100003 
+        //To this:   AAPL__201016C00100000 or ABC___201016C00100003
+        let contractChars : char[] = [|'_';'_';'_';'_';'_';'_';'2';'2';'0';'1';'0';'1';'C';'0';'0';'0';'0';'0';'0';'0';'0'|]
         let underscoreIndex : int = cont.IndexOf('_')
-        let symbol : string = cont.Substring(0, underscoreIndex).PadRight(6, '_')
-        let date : string = cont.Substring(underscoreIndex + 1, 6)
-        let putCall : char = cont[underscoreIndex + 7]
-        let price : string = cont.Substring(underscoreIndex + 8)
-        let decimalIndex : int = price.IndexOf('.')
-        let wholePrice : string = price.Substring(0, decimalIndex)
-        let decimalPrice : string = price.Substring(decimalIndex + 1)
-        $"{symbol}{date}{putCall}{wholePrice.PadLeft(5, '0')}{decimalPrice.PadRight(3, '0')}"
+        let decimalIndex : int = cont.IndexOf('.', 12)
+        let unformattedChars : char[] = cont.ToCharArray() 
+
+        //copy symbol
+        unformattedChars.AsSpan(0, underscoreIndex).CopyTo(contractChars.AsSpan(0))        
+
+        //copy date
+        unformattedChars.AsSpan(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6))
+
+        //copy put/call
+        unformattedChars.AsSpan(underscoreIndex + 7, 1).CopyTo(contractChars.AsSpan(12))
+
+        //whole number copy
+        unformattedChars.AsSpan(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.AsSpan(18 - (decimalIndex - underscoreIndex - 8)))
+
+        //decimal number copy
+        unformattedChars.AsSpan(decimalIndex + 1).CopyTo(contractChars.AsSpan(18))
+
+        new String(contractChars)
     member _.AskPrice with get() : float =
         if (aPrice = Int32.MaxValue) || (aPrice = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(aPrice, pt)
     member _.AskSize with get() : uint32 = aSize
@@ -124,16 +136,28 @@ type Trade internal
     member _.Contract with get() : string =
         //Transform from server format to normal format
         //From this: AAPL_201016C100.00 or ABC_201016C100.003
-        //To this:   AAPL__201016C00100000 or ABC___201016C00100003 
+        //To this:   AAPL__201016C00100000 or ABC___201016C00100003
+        let contractChars : char[] = [|'_';'_';'_';'_';'_';'_';'2';'2';'0';'1';'0';'1';'C';'0';'0';'0';'0';'0';'0';'0';'0'|]
         let underscoreIndex : int = cont.IndexOf('_')
-        let symbol : string = cont.Substring(0, underscoreIndex).PadRight(6, '_')
-        let date : string = cont.Substring(underscoreIndex + 1, 6)
-        let putCall : char = cont[underscoreIndex + 7]
-        let price : string = cont.Substring(underscoreIndex + 8)
-        let decimalIndex : int = price.IndexOf('.')
-        let wholePrice : string = price.Substring(0, decimalIndex)
-        let decimalPrice : string = price.Substring(decimalIndex + 1)
-        $"{symbol}{date}{putCall}{wholePrice.PadLeft(5, '0')}{decimalPrice.PadRight(3, '0')}"
+        let decimalIndex : int = cont.IndexOf('.', 12)
+        let unformattedChars : char[] = cont.ToCharArray() 
+
+        //copy symbol
+        unformattedChars.AsSpan(0, underscoreIndex).CopyTo(contractChars.AsSpan(0))        
+
+        //copy date
+        unformattedChars.AsSpan(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6))
+
+        //copy put/call
+        unformattedChars.AsSpan(underscoreIndex + 7, 1).CopyTo(contractChars.AsSpan(12))
+
+        //whole number copy
+        unformattedChars.AsSpan(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.AsSpan(18 - (decimalIndex - underscoreIndex - 8)))
+
+        //decimal number copy
+        unformattedChars.AsSpan(decimalIndex + 1).CopyTo(contractChars.AsSpan(18))
+
+        new String(contractChars)
     member _.Price with get() : float =
         if (p = Int32.MaxValue) || (p = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(p, pt)
     member _.Size with get() : uint32 = s
@@ -190,16 +214,28 @@ type Refresh internal
     member _.Contract with get() : string =
         //Transform from server format to normal format
         //From this: AAPL_201016C100.00 or ABC_201016C100.003
-        //To this:   AAPL__201016C00100000 or ABC___201016C00100003 
+        //To this:   AAPL__201016C00100000 or ABC___201016C00100003
+        let contractChars : char[] = [|'_';'_';'_';'_';'_';'_';'2';'2';'0';'1';'0';'1';'C';'0';'0';'0';'0';'0';'0';'0';'0'|]
         let underscoreIndex : int = cont.IndexOf('_')
-        let symbol : string = cont.Substring(0, underscoreIndex).PadRight(6, '_')
-        let date : string = cont.Substring(underscoreIndex + 1, 6)
-        let putCall : char = cont[underscoreIndex + 7]
-        let price : string = cont.Substring(underscoreIndex + 8)
-        let decimalIndex : int = price.IndexOf('.')
-        let wholePrice : string = price.Substring(0, decimalIndex)
-        let decimalPrice : string = price.Substring(decimalIndex + 1)
-        $"{symbol}{date}{putCall}{wholePrice.PadLeft(5, '0')}{decimalPrice.PadRight(3, '0')}"
+        let decimalIndex : int = cont.IndexOf('.', 12)
+        let unformattedChars : char[] = cont.ToCharArray() 
+
+        //copy symbol
+        unformattedChars.AsSpan(0, underscoreIndex).CopyTo(contractChars.AsSpan(0))        
+
+        //copy date
+        unformattedChars.AsSpan(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6))
+
+        //copy put/call
+        unformattedChars.AsSpan(underscoreIndex + 7, 1).CopyTo(contractChars.AsSpan(12))
+
+        //whole number copy
+        unformattedChars.AsSpan(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.AsSpan(18 - (decimalIndex - underscoreIndex - 8)))
+
+        //decimal number copy
+        unformattedChars.AsSpan(decimalIndex + 1).CopyTo(contractChars.AsSpan(18))
+
+        new String(contractChars)
     member _.OpenInterest with get() : uint32 = oi
     member _.OpenPrice with get() : float =
         if (o = Int32.MaxValue) || (o = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(o, pt)
@@ -278,16 +314,29 @@ type UnusualActivity internal
     member _.Contract with get() : string =
         //Transform from server format to normal format
         //From this: AAPL_201016C100.00 or ABC_201016C100.003
-        //To this:   AAPL__201016C00100000 or ABC___201016C00100003 
+        //To this:   AAPL__201016C00100000 or ABC___201016C00100003
+        let contractChars : char[] = [|'_';'_';'_';'_';'_';'_';'2';'2';'0';'1';'0';'1';'C';'0';'0';'0';'0';'0';'0';'0';'0'|]
         let underscoreIndex : int = cont.IndexOf('_')
-        let symbol : string = cont.Substring(0, underscoreIndex).PadRight(6, '_')
-        let date : string = cont.Substring(underscoreIndex + 1, 6)
-        let putCall : char = cont[underscoreIndex + 7]
-        let price : string = cont.Substring(underscoreIndex + 8)
-        let decimalIndex : int = price.IndexOf('.')
-        let wholePrice : string = price.Substring(0, decimalIndex)
-        let decimalPrice : string = price.Substring(decimalIndex + 1)
-        $"{symbol}{date}{putCall}{wholePrice.PadLeft(5, '0')}{decimalPrice.PadRight(3, '0')}"
+        let decimalIndex : int = cont.IndexOf('.', 12)
+        let unformattedChars : char[] = cont.ToCharArray() 
+
+        //copy symbol
+        unformattedChars.AsSpan(0, underscoreIndex).CopyTo(contractChars.AsSpan(0))        
+
+        //copy date
+        unformattedChars.AsSpan(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6))
+
+        //copy put/call
+        unformattedChars.AsSpan(underscoreIndex + 7, 1).CopyTo(contractChars.AsSpan(12))
+
+        //whole number copy
+        unformattedChars.AsSpan(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.AsSpan(18 - (decimalIndex - underscoreIndex - 8)))
+
+        //decimal number copy
+        unformattedChars.AsSpan(decimalIndex + 1).CopyTo(contractChars.AsSpan(18))
+
+        new String(contractChars)
+        
     member _.UnusualActivityType with get() : UAType = uat
     member _.Sentiment with get() : UASentiment = s
     member _.TotalValue with get() : float =
