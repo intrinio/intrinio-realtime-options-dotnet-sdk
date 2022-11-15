@@ -23,10 +23,26 @@ module private ClientInline =
     let [<Literal>] internal UNUSUAL_ACTIVITY_MESSAGE_SIZE : int = 74
 
     let internal SELF_HEAL_BACKOFFS : int[] = [| 10_000; 30_000; 60_000; 300_000; 600_000 |]
+    
+    let inline internal FormatContract (alternateFormattedChars: ReadOnlySpan<byte>) : string =
+        //Transform from server format to normal format
+        //From this: AAPL_201016C100.00 or ABC_201016C100.003
+        //To this:   AAPL__201016C00100000 or ABC___201016C00100003
+        let contractChars : byte[] = [|(byte)'_';(byte)'_';(byte)'_';(byte)'_';(byte)'_';(byte)'_';(byte)'2';(byte)'2';(byte)'0';(byte)'1';(byte)'0';(byte)'1';(byte)'C';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0'|]
+        let underscoreIndex : int = alternateFormattedChars.IndexOf((byte)'_')
+        let decimalIndex : int = alternateFormattedChars.Slice(12).IndexOf((byte)'.') + 12 //ignore decimals in tickersymbol
+
+        alternateFormattedChars.Slice(0, underscoreIndex).CopyTo(contractChars.AsSpan(0)) //copy symbol        
+        alternateFormattedChars.Slice(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6)) //copy date
+        alternateFormattedChars.Slice(underscoreIndex + 7, 1).CopyTo(contractChars.AsSpan(12)) //copy put/call
+        alternateFormattedChars.Slice(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.AsSpan(18 - (decimalIndex - underscoreIndex - 8))) //whole number copy
+        alternateFormattedChars.Slice(decimalIndex + 1).CopyTo(contractChars.AsSpan(18)) //decimal number copy
+        
+        Encoding.ASCII.GetString(contractChars)
 
     let inline internal ParseTrade (bytes: ReadOnlySpan<byte>) : Trade =
         Trade
-            (Encoding.ASCII.GetString(bytes.Slice(1, int bytes[0])),
+            (FormatContract(bytes.Slice(1, int bytes[0])),
              bytes[23],
              bytes[24],
              BitConverter.ToInt32(bytes.Slice(25, 4)),
@@ -39,7 +55,7 @@ module private ClientInline =
 
     let inline internal ParseQuote (bytes: ReadOnlySpan<byte>) : Quote =
         Quote
-            (Encoding.ASCII.GetString(bytes.Slice(1, int bytes[0])),
+            (FormatContract(bytes.Slice(1, int bytes[0])),
              bytes[23],
              BitConverter.ToInt32(bytes.Slice(24, 4)),
              BitConverter.ToUInt32(bytes.Slice(28, 4)),
@@ -49,7 +65,7 @@ module private ClientInline =
 
     let inline internal ParseRefresh (bytes: ReadOnlySpan<byte>) : Refresh =
         Refresh
-            (Encoding.ASCII.GetString(bytes.Slice(1, int bytes[0])),
+            (FormatContract(bytes.Slice(1, int bytes[0])),
              bytes[23],
              BitConverter.ToUInt32(bytes.Slice(24, 4)),
              BitConverter.ToInt32(bytes.Slice(28, 4)),
@@ -59,7 +75,7 @@ module private ClientInline =
 
     let inline internal ParseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
         UnusualActivity
-            (Encoding.ASCII.GetString(bytes.Slice(1, int bytes[0])),
+            (FormatContract(bytes.Slice(1, int bytes[0])),
              enum<UAType> (int bytes[22]),
              enum<UASentiment> (int bytes[23]),
              bytes[24],

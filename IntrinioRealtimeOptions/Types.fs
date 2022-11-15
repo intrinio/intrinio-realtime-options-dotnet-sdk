@@ -2,6 +2,7 @@
 
 open System
 open System.Globalization
+open System.Text
 
 type Provider =
     | NONE = 0
@@ -56,31 +57,7 @@ type Quote internal
      bSize: uint32,
      ts: uint64) =
 
-    member _.Contract with get() : string =
-        //Transform from server format to normal format
-        //From this: AAPL_201016C100.00 or ABC_201016C100.003
-        //To this:   AAPL__201016C00100000 or ABC___201016C00100003
-        let contractChars : char[] = [|'_';'_';'_';'_';'_';'_';'2';'2';'0';'1';'0';'1';'C';'0';'0';'0';'0';'0';'0';'0';'0'|]
-        let underscoreIndex : int = cont.IndexOf('_')
-        let decimalIndex : int = cont.IndexOf('.', 12)
-        let unformattedChars : char[] = cont.ToCharArray() 
-
-        //copy symbol
-        unformattedChars.AsSpan(0, underscoreIndex).CopyTo(contractChars.AsSpan(0))        
-
-        //copy date
-        unformattedChars.AsSpan(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6))
-
-        //copy put/call
-        unformattedChars.AsSpan(underscoreIndex + 7, 1).CopyTo(contractChars.AsSpan(12))
-
-        //whole number copy
-        unformattedChars.AsSpan(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.AsSpan(18 - (decimalIndex - underscoreIndex - 8)))
-
-        //decimal number copy
-        unformattedChars.AsSpan(decimalIndex + 1).CopyTo(contractChars.AsSpan(18))
-
-        new String(contractChars)
+    member _.Contract with get() : string = cont
     member _.AskPrice with get() : float =
         if (aPrice = Int32.MaxValue) || (aPrice = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(aPrice, pt)
     member _.AskSize with get() : uint32 = aSize
@@ -90,17 +67,17 @@ type Quote internal
     member _.Timestamp with get() : float = TypesInline.ScaleTimestamp(ts)
 
     member this.GetStrikePrice() : float32 =
-        let i: int = cont.IndexOf('_')
-        let chunk: ReadOnlySpan<char> = cont.AsSpan((i + 8), (cont.Length - (i + 8)))
-        Single.Parse(chunk)
+        let whole : uint16 = (uint16 this.Contract.[13] - uint16 '0') * 10_000us + (uint16 this.Contract.[14] - uint16 '0') * 1000us + (uint16 this.Contract.[15] - uint16 '0') * 100us + (uint16 this.Contract.[16] - uint16 '0') * 10us + (uint16 this.Contract.[17] - uint16 '0')
+        let part : float32 = (float32 (uint8 this.Contract.[18] - uint8 '0')) * 0.1f + (float32 (uint8 this.Contract.[19] - uint8 '0')) * 0.01f + (float32 (uint8 this.Contract.[20] - uint8 '0')) * 0.001f
+        (float32 whole) + part
 
-    member this.IsPut() : bool = cont.[cont.IndexOf('_') + 7] = 'P'
+    member this.IsPut() : bool = this.Contract.[12] = 'P'
 
-    member this.IsCall() : bool = cont.[cont.IndexOf('_') + 7] = 'C'
+    member this.IsCall() : bool = this.Contract.[12] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(cont.Substring(cont.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = cont.Substring(0, cont.IndexOf('_')).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
 
     override this.ToString() : string =
         sprintf "Quote (Symbol: %s, AskPrice: %s, AskSize: %s, BidPrice: %s, BidSize: %s, Timestamp: %s)"
@@ -133,31 +110,7 @@ type Trade internal
      ape: int32,
      bpe: int32,
      upe: int32) =
-    member _.Contract with get() : string =
-        //Transform from server format to normal format
-        //From this: AAPL_201016C100.00 or ABC_201016C100.003
-        //To this:   AAPL__201016C00100000 or ABC___201016C00100003
-        let contractChars : char[] = [|'_';'_';'_';'_';'_';'_';'2';'2';'0';'1';'0';'1';'C';'0';'0';'0';'0';'0';'0';'0';'0'|]
-        let underscoreIndex : int = cont.IndexOf('_')
-        let decimalIndex : int = cont.IndexOf('.', 12)
-        let unformattedChars : char[] = cont.ToCharArray() 
-
-        //copy symbol
-        unformattedChars.AsSpan(0, underscoreIndex).CopyTo(contractChars.AsSpan(0))        
-
-        //copy date
-        unformattedChars.AsSpan(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6))
-
-        //copy put/call
-        unformattedChars.AsSpan(underscoreIndex + 7, 1).CopyTo(contractChars.AsSpan(12))
-
-        //whole number copy
-        unformattedChars.AsSpan(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.AsSpan(18 - (decimalIndex - underscoreIndex - 8)))
-
-        //decimal number copy
-        unformattedChars.AsSpan(decimalIndex + 1).CopyTo(contractChars.AsSpan(18))
-
-        new String(contractChars)
+    member _.Contract with get() : string = cont
     member _.Price with get() : float =
         if (p = Int32.MaxValue) || (p = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(p, pt)
     member _.Size with get() : uint32 = s
@@ -171,17 +124,17 @@ type Trade internal
         if (upe = Int32.MaxValue) || (upe = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(upe, upt)
     
     member this.GetStrikePrice() : float32 =
-        let i: int = cont.IndexOf('_')
-        let chunk: ReadOnlySpan<char> = cont.AsSpan((i + 8), (cont.Length - (i + 8)))
-        Single.Parse(chunk)
+        let whole : uint16 = (uint16 this.Contract.[13] - uint16 '0') * 10_000us + (uint16 this.Contract.[14] - uint16 '0') * 1000us + (uint16 this.Contract.[15] - uint16 '0') * 100us + (uint16 this.Contract.[16] - uint16 '0') * 10us + (uint16 this.Contract.[17] - uint16 '0')
+        let part : float32 = (float32 (uint8 this.Contract.[18] - uint8 '0')) * 0.1f + (float32 (uint8 this.Contract.[19] - uint8 '0')) * 0.01f + (float32 (uint8 this.Contract.[20] - uint8 '0')) * 0.001f
+        (float32 whole) + part
 
-    member this.IsPut() : bool = cont.[cont.IndexOf('_') + 7] = 'P'
+    member this.IsPut() : bool = this.Contract.[12] = 'P'
 
-    member this.IsCall() : bool = cont.[cont.IndexOf('_') + 7] = 'C'
+    member this.IsCall() : bool = this.Contract.[12] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(cont.Substring(cont.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = cont.Substring(0, cont.IndexOf('_')).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
 
     override this.ToString() : string =
         sprintf "Trade (Symbol: %s, Price: %s, Size: %s, Timestamp: %s, TotalVolume: %s, AskPriceAtExecution: %s, BidPriceAtExecution: %s, UnderlyingPrice: %s)"
@@ -211,31 +164,7 @@ type Refresh internal
      c: int32,
      h: int32,
      l: int32) =
-    member _.Contract with get() : string =
-        //Transform from server format to normal format
-        //From this: AAPL_201016C100.00 or ABC_201016C100.003
-        //To this:   AAPL__201016C00100000 or ABC___201016C00100003
-        let contractChars : char[] = [|'_';'_';'_';'_';'_';'_';'2';'2';'0';'1';'0';'1';'C';'0';'0';'0';'0';'0';'0';'0';'0'|]
-        let underscoreIndex : int = cont.IndexOf('_')
-        let decimalIndex : int = cont.IndexOf('.', 12)
-        let unformattedChars : char[] = cont.ToCharArray() 
-
-        //copy symbol
-        unformattedChars.AsSpan(0, underscoreIndex).CopyTo(contractChars.AsSpan(0))        
-
-        //copy date
-        unformattedChars.AsSpan(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6))
-
-        //copy put/call
-        unformattedChars.AsSpan(underscoreIndex + 7, 1).CopyTo(contractChars.AsSpan(12))
-
-        //whole number copy
-        unformattedChars.AsSpan(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.AsSpan(18 - (decimalIndex - underscoreIndex - 8)))
-
-        //decimal number copy
-        unformattedChars.AsSpan(decimalIndex + 1).CopyTo(contractChars.AsSpan(18))
-
-        new String(contractChars)
+    member _.Contract with get() : string = cont
     member _.OpenInterest with get() : uint32 = oi
     member _.OpenPrice with get() : float =
         if (o = Int32.MaxValue) || (o = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(o, pt)
@@ -247,17 +176,17 @@ type Refresh internal
         if (l = Int32.MaxValue) || (l = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(l, pt)
 
     member this.GetStrikePrice() : float32 =
-        let i: int = cont.IndexOf('_')
-        let chunk: ReadOnlySpan<char> = cont.AsSpan((i + 8), (cont.Length - (i + 8)))
-        Single.Parse(chunk)
+        let whole : uint16 = (uint16 this.Contract.[13] - uint16 '0') * 10_000us + (uint16 this.Contract.[14] - uint16 '0') * 1000us + (uint16 this.Contract.[15] - uint16 '0') * 100us + (uint16 this.Contract.[16] - uint16 '0') * 10us + (uint16 this.Contract.[17] - uint16 '0')
+        let part : float32 = (float32 (uint8 this.Contract.[18] - uint8 '0')) * 0.1f + (float32 (uint8 this.Contract.[19] - uint8 '0')) * 0.01f + (float32 (uint8 this.Contract.[20] - uint8 '0')) * 0.001f
+        (float32 whole) + part
 
-    member this.IsPut() : bool = cont.[cont.IndexOf('_') + 7] = 'P'
+    member this.IsPut() : bool = this.Contract.[12] = 'P'
 
-    member this.IsCall() : bool = cont.[cont.IndexOf('_') + 7] = 'C'
+    member this.IsCall() : bool = this.Contract.[12] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(cont.Substring(cont.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = cont.Substring(0, cont.IndexOf('_')).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
     
     override this.ToString() : string =
         sprintf "Refresh (Symbol: %s, OpenInterest: %s, OpenPrice: %s, ClosePrice: %s, HighPrice: %s, LowPrice: %s)"
@@ -311,31 +240,7 @@ type UnusualActivity internal
      bpe: int32,
      upe: int32,
      t: uint64) =
-    member _.Contract with get() : string =
-        //Transform from server format to normal format
-        //From this: AAPL_201016C100.00 or ABC_201016C100.003
-        //To this:   AAPL__201016C00100000 or ABC___201016C00100003
-        let contractChars : char[] = [|'_';'_';'_';'_';'_';'_';'2';'2';'0';'1';'0';'1';'C';'0';'0';'0';'0';'0';'0';'0';'0'|]
-        let underscoreIndex : int = cont.IndexOf('_')
-        let decimalIndex : int = cont.IndexOf('.', 12)
-        let unformattedChars : char[] = cont.ToCharArray() 
-
-        //copy symbol
-        unformattedChars.AsSpan(0, underscoreIndex).CopyTo(contractChars.AsSpan(0))        
-
-        //copy date
-        unformattedChars.AsSpan(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6))
-
-        //copy put/call
-        unformattedChars.AsSpan(underscoreIndex + 7, 1).CopyTo(contractChars.AsSpan(12))
-
-        //whole number copy
-        unformattedChars.AsSpan(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.AsSpan(18 - (decimalIndex - underscoreIndex - 8)))
-
-        //decimal number copy
-        unformattedChars.AsSpan(decimalIndex + 1).CopyTo(contractChars.AsSpan(18))
-
-        new String(contractChars)
+    member _.Contract with get() : string = cont
         
     member _.UnusualActivityType with get() : UAType = uat
     member _.Sentiment with get() : UASentiment = s
@@ -353,17 +258,17 @@ type UnusualActivity internal
     member _.Timestamp with get() : float = TypesInline.ScaleTimestamp(t)
 
     member this.GetStrikePrice() : float32 =
-        let i: int = cont.IndexOf('_')
-        let chunk: ReadOnlySpan<char> = cont.AsSpan((i + 8), (cont.Length - (i + 8)))
-        Single.Parse(chunk)
+        let whole : uint16 = (uint16 this.Contract.[13] - uint16 '0') * 10_000us + (uint16 this.Contract.[14] - uint16 '0') * 1000us + (uint16 this.Contract.[15] - uint16 '0') * 100us + (uint16 this.Contract.[16] - uint16 '0') * 10us + (uint16 this.Contract.[17] - uint16 '0')
+        let part : float32 = (float32 (uint8 this.Contract.[18] - uint8 '0')) * 0.1f + (float32 (uint8 this.Contract.[19] - uint8 '0')) * 0.01f + (float32 (uint8 this.Contract.[20] - uint8 '0')) * 0.001f
+        (float32 whole) + part
 
-    member this.IsPut() : bool = cont.[cont.IndexOf('_') + 7] = 'P'
+    member this.IsPut() : bool = this.Contract.[12] = 'P'
 
-    member this.IsCall() : bool = cont.[cont.IndexOf('_') + 7] = 'C'
+    member this.IsCall() : bool = this.Contract.[12] = 'C'
 
-    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(cont.Substring(cont.IndexOf('_') + 1, 6), "yyMMdd", CultureInfo.InvariantCulture)
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
-    member this.GetUnderlyingSymbol() : string = cont.Substring(0, cont.IndexOf('_')).TrimEnd('_')
+    member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
 
     override this.ToString() : string =
         sprintf "UnusualActivity (Symbol: %s, Type: %s, Sentiment: %s, TotalValue: %s, TotalSize: %s, AveragePrice: %s, AskAtExecution: %s, BidAtExecution: %s, UnderlyingPriceAtExecution: %s, Timestamp: %s)"
