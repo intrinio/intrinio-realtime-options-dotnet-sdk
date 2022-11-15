@@ -64,7 +64,7 @@ type Quote internal
         let symbol : string = cont.Substring(0, underscoreIndex).PadRight(6, '_')
         let date : string = cont.Substring(underscoreIndex + 1, 6)
         let putCall : char = cont[underscoreIndex + 7]
-        let price : string = cont.Substring(underscoreIndex + 8, cont.Length - underscoreIndex - 8)
+        let price : string = cont.Substring(underscoreIndex + 8)
         let decimalIndex : int = price.IndexOf('.')
         let wholePrice : string = price.Substring(0, decimalIndex)
         let decimalPrice : string = price.Substring(decimalIndex + 1, price.Length - wholePrice.Length - 1)
@@ -129,7 +129,7 @@ type Trade internal
         let symbol : string = cont.Substring(0, underscoreIndex).PadRight(6, '_')
         let date : string = cont.Substring(underscoreIndex + 1, 6)
         let putCall : char = cont[underscoreIndex + 7]
-        let price : string = cont.Substring(underscoreIndex + 8, cont.Length - underscoreIndex - 8)
+        let price : string = cont.Substring(underscoreIndex + 8)
         let decimalIndex : int = price.IndexOf('.')
         let wholePrice : string = price.Substring(0, decimalIndex)
         let decimalPrice : string = price.Substring(decimalIndex + 1, price.Length - wholePrice.Length - 1)
@@ -195,7 +195,7 @@ type Refresh internal
         let symbol : string = cont.Substring(0, underscoreIndex).PadRight(6, '_')
         let date : string = cont.Substring(underscoreIndex + 1, 6)
         let putCall : char = cont[underscoreIndex + 7]
-        let price : string = cont.Substring(underscoreIndex + 8, cont.Length - underscoreIndex - 8)
+        let price : string = cont.Substring(underscoreIndex + 8)
         let decimalIndex : int = price.IndexOf('.')
         let wholePrice : string = price.Substring(0, decimalIndex)
         let decimalPrice : string = price.Substring(decimalIndex + 1, price.Length - wholePrice.Length - 1)
@@ -283,7 +283,7 @@ type UnusualActivity internal
         let symbol : string = cont.Substring(0, underscoreIndex).PadRight(6, '_')
         let date : string = cont.Substring(underscoreIndex + 1, 6)
         let putCall : char = cont[underscoreIndex + 7]
-        let price : string = cont.Substring(underscoreIndex + 8, cont.Length - underscoreIndex - 8)
+        let price : string = cont.Substring(underscoreIndex + 8)
         let decimalIndex : int = price.IndexOf('.')
         let wholePrice : string = price.Substring(0, decimalIndex)
         let decimalPrice : string = price.Substring(decimalIndex + 1, price.Length - wholePrice.Length - 1)
