@@ -67,7 +67,7 @@ type Quote internal
         let price : string = cont.Substring(underscoreIndex + 8)
         let decimalIndex : int = price.IndexOf('.')
         let wholePrice : string = price.Substring(0, decimalIndex)
-        let decimalPrice : string = price.Substring(decimalIndex + 1, price.Length - wholePrice.Length - 1)
+        let decimalPrice : string = price.Substring(decimalIndex + 1)
         $"{symbol}{date}{putCall}{wholePrice.PadLeft(5, '0')}{decimalPrice.PadRight(3, '0')}"
     member _.AskPrice with get() : float =
         if (aPrice = Int32.MaxValue) || (aPrice = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(aPrice, pt)
@@ -132,7 +132,7 @@ type Trade internal
         let price : string = cont.Substring(underscoreIndex + 8)
         let decimalIndex : int = price.IndexOf('.')
         let wholePrice : string = price.Substring(0, decimalIndex)
-        let decimalPrice : string = price.Substring(decimalIndex + 1, price.Length - wholePrice.Length - 1)
+        let decimalPrice : string = price.Substring(decimalIndex + 1)
         $"{symbol}{date}{putCall}{wholePrice.PadLeft(5, '0')}{decimalPrice.PadRight(3, '0')}"
     member _.Price with get() : float =
         if (p = Int32.MaxValue) || (p = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(p, pt)
@@ -198,7 +198,7 @@ type Refresh internal
         let price : string = cont.Substring(underscoreIndex + 8)
         let decimalIndex : int = price.IndexOf('.')
         let wholePrice : string = price.Substring(0, decimalIndex)
-        let decimalPrice : string = price.Substring(decimalIndex + 1, price.Length - wholePrice.Length - 1)
+        let decimalPrice : string = price.Substring(decimalIndex + 1)
         $"{symbol}{date}{putCall}{wholePrice.PadLeft(5, '0')}{decimalPrice.PadRight(3, '0')}"
     member _.OpenInterest with get() : uint32 = oi
     member _.OpenPrice with get() : float =
@@ -286,7 +286,7 @@ type UnusualActivity internal
         let price : string = cont.Substring(underscoreIndex + 8)
         let decimalIndex : int = price.IndexOf('.')
         let wholePrice : string = price.Substring(0, decimalIndex)
-        let decimalPrice : string = price.Substring(decimalIndex + 1, price.Length - wholePrice.Length - 1)
+        let decimalPrice : string = price.Substring(decimalIndex + 1)
         $"{symbol}{date}{putCall}{wholePrice.PadLeft(5, '0')}{decimalPrice.PadRight(3, '0')}"
     member _.UnusualActivityType with get() : UAType = uat
     member _.Sentiment with get() : UASentiment = s
