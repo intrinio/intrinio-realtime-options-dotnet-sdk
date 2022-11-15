@@ -30,7 +30,7 @@ module private ClientInline =
         //To this:   AAPL__201016C00100000 or ABC___201016C00100003
         let contractChars : byte[] = [|(byte)'_';(byte)'_';(byte)'_';(byte)'_';(byte)'_';(byte)'_';(byte)'2';(byte)'2';(byte)'0';(byte)'1';(byte)'0';(byte)'1';(byte)'C';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0'|]
         let underscoreIndex : int = alternateFormattedChars.IndexOf((byte)'_')
-        let decimalIndex : int = alternateFormattedChars.Slice(12).IndexOf((byte)'.') + 12 //ignore decimals in tickersymbol
+        let decimalIndex : int = alternateFormattedChars.Slice(9).IndexOf((byte)'.') + 9 //ignore decimals in tickersymbol
 
         alternateFormattedChars.Slice(0, underscoreIndex).CopyTo(contractChars.AsSpan(0)) //copy symbol        
         alternateFormattedChars.Slice(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6)) //copy date
