@@ -13,6 +13,8 @@ open System.Threading.Tasks
 open System.Net.Sockets
 open WebSocket4Net
 open Intrinio.Config
+open FSharp.NativeInterop
+open System.Runtime.CompilerServices
 
 module private ClientInline =
 
@@ -24,19 +26,47 @@ module private ClientInline =
 
     let internal SELF_HEAL_BACKOFFS : int[] = [| 10_000; 30_000; 60_000; 300_000; 600_000 |]
     
+    [<SkipLocalsInit>]
+    let inline stackalloc<'a when 'a: unmanaged> (length: int): Span<'a> =
+        let p = NativePtr.stackalloc<'a> length |> NativePtr.toVoidPtr
+        Span<'a>(p, length)
+    
     let inline internal FormatContract (alternateFormattedChars: ReadOnlySpan<byte>) : string =
         //Transform from server format to normal format
         //From this: AAPL_201016C100.00 or ABC_201016C100.003
         //To this:   AAPL__201016C00100000 or ABC___201016C00100003
-        let contractChars : byte[] = [|(byte)'_';(byte)'_';(byte)'_';(byte)'_';(byte)'_';(byte)'_';(byte)'2';(byte)'2';(byte)'0';(byte)'1';(byte)'0';(byte)'1';(byte)'C';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0';(byte)'0'|]
+        
+        let contractChars : Span<byte> = stackalloc<byte>(21)
+        contractChars[0] <- (byte)'_'
+        contractChars[1] <- (byte)'_'
+        contractChars[2] <- (byte)'_'
+        contractChars[3] <- (byte)'_'
+        contractChars[4] <- (byte)'_'
+        contractChars[5] <- (byte)'_'
+        contractChars[6] <- (byte)'2'
+        contractChars[7] <- (byte)'2'
+        contractChars[8] <- (byte)'0'
+        contractChars[9] <- (byte)'1'
+        contractChars[10] <- (byte)'0'
+        contractChars[11] <- (byte)'1'
+        contractChars[12] <- (byte)'C'
+        contractChars[13] <- (byte)'0'
+        contractChars[14] <- (byte)'0'
+        contractChars[15] <- (byte)'0'
+        contractChars[16] <- (byte)'0'
+        contractChars[17] <- (byte)'0'
+        contractChars[18] <- (byte)'0'
+        contractChars[19] <- (byte)'0'
+        contractChars[20] <- (byte)'0'
+        
         let underscoreIndex : int = alternateFormattedChars.IndexOf((byte)'_')
         let decimalIndex : int = alternateFormattedChars.Slice(9).IndexOf((byte)'.') + 9 //ignore decimals in tickersymbol
 
-        alternateFormattedChars.Slice(0, underscoreIndex).CopyTo(contractChars.AsSpan(0)) //copy symbol        
-        alternateFormattedChars.Slice(underscoreIndex + 1, 6).CopyTo(contractChars.AsSpan(6)) //copy date
-        alternateFormattedChars.Slice(underscoreIndex + 7, 1).CopyTo(contractChars.AsSpan(12)) //copy put/call
-        alternateFormattedChars.Slice(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.AsSpan(18 - (decimalIndex - underscoreIndex - 8))) //whole number copy
-        alternateFormattedChars.Slice(decimalIndex + 1).CopyTo(contractChars.AsSpan(18)) //decimal number copy
+        alternateFormattedChars.Slice(0, underscoreIndex).CopyTo(contractChars) //copy symbol        
+        alternateFormattedChars.Slice(underscoreIndex + 1, 6).CopyTo(contractChars.Slice(6)) //copy date
+        alternateFormattedChars.Slice(underscoreIndex + 7, 1).CopyTo(contractChars.Slice(12)) //copy put/call
+        alternateFormattedChars.Slice(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.Slice(18 - (decimalIndex - underscoreIndex - 8))) //whole number copy
+        alternateFormattedChars.Slice(decimalIndex + 1).CopyTo(contractChars.Slice(18)) //decimal number copy
         
         Encoding.ASCII.GetString(contractChars)
 
