@@ -27,7 +27,7 @@ module private ClientInline =
     let internal SELF_HEAL_BACKOFFS : int[] = [| 10_000; 30_000; 60_000; 300_000; 600_000 |]
     
     [<SkipLocalsInit>]
-    let inline stackalloc<'a when 'a: unmanaged> (length: int): Span<'a> =
+    let inline private stackalloc<'a when 'a: unmanaged> (length: int): Span<'a> =
         let p = NativePtr.stackalloc<'a> length |> NativePtr.toVoidPtr
         Span<'a>(p, length)
     
