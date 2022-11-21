@@ -80,7 +80,7 @@ type Quote internal
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
 
     override this.ToString() : string =
-        sprintf "Quote (Symbol: %s, AskPrice: %s, AskSize: %s, BidPrice: %s, BidSize: %s, Timestamp: %s)"
+        sprintf "Quote (Contract: %s, AskPrice: %s, AskSize: %s, BidPrice: %s, BidSize: %s, Timestamp: %s)"
             this.Contract
             (this.AskPrice.ToString("f3"))
             (this.AskSize.ToString())
@@ -137,7 +137,7 @@ type Trade internal
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
 
     override this.ToString() : string =
-        sprintf "Trade (Symbol: %s, Price: %s, Size: %s, Timestamp: %s, TotalVolume: %s, AskPriceAtExecution: %s, BidPriceAtExecution: %s, UnderlyingPrice: %s)"
+        sprintf "Trade (Contract: %s, Price: %s, Size: %s, Timestamp: %s, TotalVolume: %s, AskPriceAtExecution: %s, BidPriceAtExecution: %s, UnderlyingPrice: %s)"
             this.Contract
             (this.Price.ToString("f3"))
             (this.Size.ToString())
@@ -189,7 +189,7 @@ type Refresh internal
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
     
     override this.ToString() : string =
-        sprintf "Refresh (Symbol: %s, OpenInterest: %s, OpenPrice: %s, ClosePrice: %s, HighPrice: %s, LowPrice: %s)"
+        sprintf "Refresh (Contract: %s, OpenInterest: %s, OpenPrice: %s, ClosePrice: %s, HighPrice: %s, LowPrice: %s)"
             this.Contract
             (this.OpenInterest.ToString())
             (this.OpenPrice.ToString("f3"))
@@ -271,7 +271,7 @@ type UnusualActivity internal
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
 
     override this.ToString() : string =
-        sprintf "UnusualActivity (Symbol: %s, Type: %s, Sentiment: %s, TotalValue: %s, TotalSize: %s, AveragePrice: %s, AskAtExecution: %s, BidAtExecution: %s, UnderlyingPriceAtExecution: %s, Timestamp: %s)"
+        sprintf "UnusualActivity (Contract: %s, Type: %s, Sentiment: %s, TotalValue: %s, TotalSize: %s, AveragePrice: %s, AskAtExecution: %s, BidAtExecution: %s, UnderlyingPriceAtExecution: %s, Timestamp: %s)"
             this.Contract
             (this.UnusualActivityType.ToString())
             (this.Sentiment.ToString())
