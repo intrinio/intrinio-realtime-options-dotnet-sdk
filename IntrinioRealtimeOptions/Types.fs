@@ -2,7 +2,6 @@
 
 open System
 open System.Globalization
-open System.Text
 
 type Provider =
     | NONE = 0
@@ -38,6 +37,10 @@ module private TypesInline =
         
     let inline internal ScaleTimestamp (timestamp : UInt64) : double =
         (double timestamp) / 1_000_000_000.0
+        
+type QuoteType =
+    | Ask = 0
+    | Bid = 1
 
 /// <summary>
 /// A 'Quote' is a unit of data representing an individual market bid or ask event.
@@ -282,3 +285,111 @@ type UnusualActivity internal
             (this.BidPriceAtExecution.ToString("f3"))
             (this.UnderlyingPriceAtExecution.ToString("f3"))
             (this.Timestamp.ToString("f6"))
+            
+type TradeCandleStick =
+    val Contract: string
+    val mutable Volume: int
+    val mutable High: float
+    val mutable Low: float
+    val mutable Close: float
+    val Open: float
+    val OpenTimestamp: float
+    val mutable CloseTimestamp: float
+    
+    new(contract: string, volume: int, price: float, timestamp: float) =
+        {
+            Contract = contract
+            Volume = volume
+            High = price
+            Low = price
+            Close = price
+            Open = price
+            OpenTimestamp = timestamp
+            CloseTimestamp = timestamp
+        }
+        
+    member this.GetStrikePrice() : float32 =
+        let whole : uint16 = (uint16 this.Contract.[13] - uint16 '0') * 10_000us + (uint16 this.Contract.[14] - uint16 '0') * 1000us + (uint16 this.Contract.[15] - uint16 '0') * 100us + (uint16 this.Contract.[16] - uint16 '0') * 10us + (uint16 this.Contract.[17] - uint16 '0')
+        let part : float32 = (float32 (uint8 this.Contract.[18] - uint8 '0')) * 0.1f + (float32 (uint8 this.Contract.[19] - uint8 '0')) * 0.01f + (float32 (uint8 this.Contract.[20] - uint8 '0')) * 0.001f
+        (float32 whole) + part
+
+    member this.IsPut() : bool = this.Contract.[12] = 'P'
+
+    member this.IsCall() : bool = this.Contract.[12] = 'C'
+
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
+
+    member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
+
+    override this.ToString() : string =
+        sprintf "TradeCandleStick (Contract: %s, Volume: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s)"
+            this.Contract
+            (this.Volume.ToString())
+            (this.High.ToString("f3"))
+            (this.Low.ToString("f3"))
+            (this.Close.ToString("f3"))
+            (this.Open.ToString("f3"))
+            (this.OpenTimestamp.ToString("f6"))
+            (this.CloseTimestamp.ToString("f6"))
+            
+    member this.Update(volume: int, price: float, timestamp: float) : unit = 
+        this.Volume <- this.Volume + volume
+        this.High <- if price > this.High then price else this.High
+        this.Low <- if price < this.Low then price else this.Low
+        this.Close <- price
+        this.CloseTimestamp <- timestamp
+        
+type QuoteCandleStick =
+    val Contract: string
+    val mutable High: float
+    val mutable Low: float
+    val mutable Close: float
+    val Open: float
+    val QuoteType: QuoteType
+    val OpenTimestamp: float
+    val mutable CloseTimestamp: float
+    
+    new(contract: string,
+        price: float,
+        quoteType: QuoteType,
+        timestamp: float) =
+        {
+            Contract = contract
+            High = price
+            Low = price
+            Close = price
+            Open = price
+            QuoteType = quoteType
+            OpenTimestamp = timestamp
+            CloseTimestamp = timestamp
+        }
+        
+    member this.GetStrikePrice() : float32 =
+        let whole : uint16 = (uint16 this.Contract.[13] - uint16 '0') * 10_000us + (uint16 this.Contract.[14] - uint16 '0') * 1000us + (uint16 this.Contract.[15] - uint16 '0') * 100us + (uint16 this.Contract.[16] - uint16 '0') * 10us + (uint16 this.Contract.[17] - uint16 '0')
+        let part : float32 = (float32 (uint8 this.Contract.[18] - uint8 '0')) * 0.1f + (float32 (uint8 this.Contract.[19] - uint8 '0')) * 0.01f + (float32 (uint8 this.Contract.[20] - uint8 '0')) * 0.001f
+        (float32 whole) + part
+
+    member this.IsPut() : bool = this.Contract.[12] = 'P'
+
+    member this.IsCall() : bool = this.Contract.[12] = 'C'
+
+    member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
+
+    member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
+
+    override this.ToString() : string =
+        sprintf "QuoteCandleStick (Contract: %s, QuoteType: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s)"
+            this.Contract
+            (this.QuoteType.ToString())
+            (this.High.ToString("f3"))
+            (this.Low.ToString("f3"))
+            (this.Close.ToString("f3"))
+            (this.Open.ToString("f3"))
+            (this.OpenTimestamp.ToString("f6"))
+            (this.CloseTimestamp.ToString("f6"))
+            
+    member this.Update(price: float, timestamp: float) : unit = 
+        this.High <- if price > this.High then price else this.High
+        this.Low <- if price < this.Low then price else this.Low
+        this.Close <- price
+        this.CloseTimestamp <- timestamp
