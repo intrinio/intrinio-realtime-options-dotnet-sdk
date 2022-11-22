@@ -86,6 +86,8 @@ namespace SampleApp
 			Client.Log("Stopping sample app");
 			_timer.Dispose();
 			_client.Stop();
+			if (_useCandleSticks) 
+				_candleStickClient.Stop();
 			Environment.Exit(0);
 		}
 
@@ -95,11 +97,12 @@ namespace SampleApp
 			Action<Trade> onTrade = OnTrade;
 			Action<Quote> onQuote = OnQuote;
 			
-			//Subscribe the candlestick client to trade and quote events as well.  It's important any method subscribed this way handle exceptions so as to not cause issues for other subscribers!
+			//Subscribe the candlestick client to trade and/or quote events as well.  It's important any method subscribed this way handles exceptions so as to not cause issues for other subscribers!
 			_useCandleSticks = true;
-			_candleStickClient = new CandleStickClient(OnTradeCandleStick, OnQuoteCandleStick, 60.0, 4);
+			_candleStickClient = new CandleStickClient(OnTradeCandleStick, OnQuoteCandleStick, 60.0);
 			onTrade += _candleStickClient.OnTrade;
 			onQuote += _candleStickClient.OnQuote;
+			_candleStickClient.Start();
 
 			// Register only the callbacks that you want.
 			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
