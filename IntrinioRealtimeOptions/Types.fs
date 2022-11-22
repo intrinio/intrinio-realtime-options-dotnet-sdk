@@ -288,15 +288,15 @@ type UnusualActivity internal
             
 type TradeCandleStick =
     val Contract: string
-    val mutable Volume: int
+    val mutable Volume: uint32
     val mutable High: float
     val mutable Low: float
     val mutable Close: float
     val Open: float
     val OpenTimestamp: float
-    val mutable CloseTimestamp: float
+    val CloseTimestamp: float
     
-    new(contract: string, volume: int, price: float, timestamp: float) =
+    new(contract: string, volume: uint32, price: float, openTimestamp: float, closeTimestamp : float) =
         {
             Contract = contract
             Volume = volume
@@ -304,8 +304,8 @@ type TradeCandleStick =
             Low = price
             Close = price
             Open = price
-            OpenTimestamp = timestamp
-            CloseTimestamp = timestamp
+            OpenTimestamp = openTimestamp
+            CloseTimestamp = closeTimestamp
         }
         
     member this.GetStrikePrice() : float32 =
@@ -332,12 +332,11 @@ type TradeCandleStick =
             (this.OpenTimestamp.ToString("f6"))
             (this.CloseTimestamp.ToString("f6"))
             
-    member this.Update(volume: int, price: float, timestamp: float) : unit = 
+    member internal this.Update(volume: uint32, price: float) : unit = 
         this.Volume <- this.Volume + volume
         this.High <- if price > this.High then price else this.High
         this.Low <- if price < this.Low then price else this.Low
         this.Close <- price
-        this.CloseTimestamp <- timestamp
         
 type QuoteCandleStick =
     val Contract: string
@@ -347,12 +346,13 @@ type QuoteCandleStick =
     val Open: float
     val QuoteType: QuoteType
     val OpenTimestamp: float
-    val mutable CloseTimestamp: float
+    val CloseTimestamp: float
     
     new(contract: string,
         price: float,
         quoteType: QuoteType,
-        timestamp: float) =
+        openTimestamp: float,
+        closeTimestamp: float) =
         {
             Contract = contract
             High = price
@@ -360,8 +360,8 @@ type QuoteCandleStick =
             Close = price
             Open = price
             QuoteType = quoteType
-            OpenTimestamp = timestamp
-            CloseTimestamp = timestamp
+            OpenTimestamp = openTimestamp
+            CloseTimestamp = closeTimestamp
         }
         
     member this.GetStrikePrice() : float32 =
@@ -388,8 +388,7 @@ type QuoteCandleStick =
             (this.OpenTimestamp.ToString("f6"))
             (this.CloseTimestamp.ToString("f6"))
             
-    member this.Update(price: float, timestamp: float) : unit = 
+    member this.Update(price: float) : unit = 
         this.High <- if price > this.High then price else this.High
         this.Low <- if price < this.Low then price else this.Low
         this.Close <- price
-        this.CloseTimestamp <- timestamp
