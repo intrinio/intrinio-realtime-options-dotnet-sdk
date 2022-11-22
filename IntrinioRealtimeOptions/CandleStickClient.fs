@@ -71,25 +71,25 @@ type CandleStickClient(
             elif (bucket.AskCandleStick.Value.OpenTimestamp <= quote.Timestamp)
             then
                 bucket.AskCandleStick.Value.Update(quote.AskPrice)
-            //else This is a late trade.  We already shipped the candle, so ignore
+            //else This is a late event.  We already shipped the candle, so ignore
         elif (bucket.AskCandleStick.IsNone && not (Double.IsNaN(quote.AskPrice)))
         then
             bucket.AskCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.AskPrice, QuoteType.Ask, quote.Timestamp, quote.Timestamp + CandleStickSeconds))
         
     let onBid(quote: Quote, bucket : ContractBucket) : unit =        
-        if (bucket.AskCandleStick.IsSome && not (Double.IsNaN(quote.AskPrice)))
+        if (bucket.BidCandleStick.IsSome && not (Double.IsNaN(quote.BidPrice)))
         then
-            if (bucket.AskCandleStick.Value.OpenTimestamp + CandleStickSeconds < quote.Timestamp)
+            if (bucket.BidCandleStick.Value.OpenTimestamp + CandleStickSeconds < quote.Timestamp)
             then
-                onQuoteCandleStick.Invoke(bucket.AskCandleStick.Value)
-                bucket.AskCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.AskPrice, QuoteType.Ask, quote.Timestamp, quote.Timestamp + CandleStickSeconds))
-            elif (bucket.AskCandleStick.Value.OpenTimestamp <= quote.Timestamp)
+                onQuoteCandleStick.Invoke(bucket.BidCandleStick.Value)
+                bucket.BidCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.BidPrice, QuoteType.Bid, quote.Timestamp, quote.Timestamp + CandleStickSeconds))
+            elif (bucket.BidCandleStick.Value.OpenTimestamp <= quote.Timestamp)
             then
-                bucket.AskCandleStick.Value.Update(quote.AskPrice)
-            //else This is a late trade.  We already shipped the candle, so ignore
-        elif (bucket.AskCandleStick.IsNone && not (Double.IsNaN(quote.AskPrice)))
+                bucket.BidCandleStick.Value.Update(quote.BidPrice)
+            //else This is a late event.  We already shipped the candle, so ignore
+        elif (bucket.BidCandleStick.IsNone && not (Double.IsNaN(quote.BidPrice)))
         then
-            bucket.AskCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.AskPrice, QuoteType.Ask, quote.Timestamp, quote.Timestamp + CandleStickSeconds))
+            bucket.BidCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.BidPrice, QuoteType.Bid, quote.Timestamp, quote.Timestamp + CandleStickSeconds))
         
     member _.OnTrade(trade: Trade) : unit =
         if useOnTradeCandleStick
