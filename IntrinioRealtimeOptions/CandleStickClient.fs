@@ -38,7 +38,8 @@ type internal ContractBucket =
 type CandleStickClient(
     [<Optional; DefaultParameterValue(null:Action<TradeCandleStick>)>] onTradeCandleStick : Action<TradeCandleStick>,
     [<Optional; DefaultParameterValue(null:Action<QuoteCandleStick>)>] onQuoteCandleStick : Action<QuoteCandleStick>,
-    CandleStickSeconds : float) =
+    candleStickSeconds : float,
+    broadcastPartialCandles : bool) =
     
     let ctSource : CancellationTokenSource = new CancellationTokenSource()
     let useOnTradeCandleStick : bool = not (obj.ReferenceEquals(onTradeCandleStick,null))
@@ -64,32 +65,38 @@ type CandleStickClient(
     let onAsk(quote: Quote, bucket: ContractBucket) : unit =
         if (bucket.AskCandleStick.IsSome && not (Double.IsNaN(quote.AskPrice)))
         then
-            if (bucket.AskCandleStick.Value.OpenTimestamp + CandleStickSeconds < quote.Timestamp)
+            if (bucket.AskCandleStick.Value.OpenTimestamp + candleStickSeconds < quote.Timestamp)
             then
+                bucket.AskCandleStick.Value.MarkComplete()
                 onQuoteCandleStick.Invoke(bucket.AskCandleStick.Value)
-                bucket.AskCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.AskPrice, QuoteType.Ask, quote.Timestamp, quote.Timestamp + CandleStickSeconds))
+                bucket.AskCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.AskPrice, QuoteType.Ask, quote.Timestamp, quote.Timestamp + candleStickSeconds))
             elif (bucket.AskCandleStick.Value.OpenTimestamp <= quote.Timestamp)
             then
                 bucket.AskCandleStick.Value.Update(quote.AskPrice)
+                if broadcastPartialCandles then onQuoteCandleStick.Invoke(bucket.AskCandleStick.Value)
             //else This is a late event.  We already shipped the candle, so ignore
         elif (bucket.AskCandleStick.IsNone && not (Double.IsNaN(quote.AskPrice)))
         then
-            bucket.AskCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.AskPrice, QuoteType.Ask, quote.Timestamp, quote.Timestamp + CandleStickSeconds))
+            bucket.AskCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.AskPrice, QuoteType.Ask, quote.Timestamp, quote.Timestamp + candleStickSeconds))
+            if broadcastPartialCandles then onQuoteCandleStick.Invoke(bucket.AskCandleStick.Value)
     
     let onBid(quote: Quote, bucket : ContractBucket) : unit =        
         if (bucket.BidCandleStick.IsSome && not (Double.IsNaN(quote.BidPrice)))
         then
-            if (bucket.BidCandleStick.Value.OpenTimestamp + CandleStickSeconds < quote.Timestamp)
+            if (bucket.BidCandleStick.Value.OpenTimestamp + candleStickSeconds < quote.Timestamp)
             then
+                bucket.BidCandleStick.Value.MarkComplete()
                 onQuoteCandleStick.Invoke(bucket.BidCandleStick.Value)
-                bucket.BidCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.BidPrice, QuoteType.Bid, quote.Timestamp, quote.Timestamp + CandleStickSeconds))
+                bucket.BidCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.BidPrice, QuoteType.Bid, quote.Timestamp, quote.Timestamp + candleStickSeconds))
             elif (bucket.BidCandleStick.Value.OpenTimestamp <= quote.Timestamp)
             then
                 bucket.BidCandleStick.Value.Update(quote.BidPrice)
+                if broadcastPartialCandles then onQuoteCandleStick.Invoke(bucket.BidCandleStick.Value)
             //else This is a late event.  We already shipped the candle, so ignore
         elif (bucket.BidCandleStick.IsNone && not (Double.IsNaN(quote.BidPrice)))
         then
-            bucket.BidCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.BidPrice, QuoteType.Bid, quote.Timestamp, quote.Timestamp + CandleStickSeconds))
+            bucket.BidCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.BidPrice, QuoteType.Bid, quote.Timestamp, quote.Timestamp + candleStickSeconds))
+            if broadcastPartialCandles then onQuoteCandleStick.Invoke(bucket.BidCandleStick.Value)
             
     let getCurrentTimestamp() : float =
         (DateTime.UtcNow - DateTime.UnixEpoch.ToUniversalTime()).TotalSeconds
@@ -109,16 +116,19 @@ type CandleStickClient(
                     let currentTime : float = getCurrentTimestamp()
                     bucket.Locker.EnterWriteLock()
                     try
-                        if (useOnQuoteCandleStick && bucket.TradeCandleStick.IsSome && (bucket.TradeCandleStick.Value.OpenTimestamp + CandleStickSeconds < currentTime))
+                        if (useOnQuoteCandleStick && bucket.TradeCandleStick.IsSome && (bucket.TradeCandleStick.Value.OpenTimestamp + candleStickSeconds < currentTime))
                         then
+                            bucket.TradeCandleStick.Value.MarkComplete()
                             onTradeCandleStick.Invoke(bucket.TradeCandleStick.Value)
                             bucket.TradeCandleStick <- Option.None
-                        if (useOnQuoteCandleStick && bucket.AskCandleStick.IsSome && (bucket.AskCandleStick.Value.OpenTimestamp + CandleStickSeconds < currentTime))
+                        if (useOnQuoteCandleStick && bucket.AskCandleStick.IsSome && (bucket.AskCandleStick.Value.OpenTimestamp + candleStickSeconds < currentTime))
                         then
+                            bucket.AskCandleStick.Value.MarkComplete()
                             onQuoteCandleStick.Invoke(bucket.AskCandleStick.Value)
                             bucket.AskCandleStick <- Option.None
-                        if (useOnQuoteCandleStick && bucket.BidCandleStick.IsSome && (bucket.BidCandleStick.Value.OpenTimestamp + CandleStickSeconds < currentTime))
+                        if (useOnQuoteCandleStick && bucket.BidCandleStick.IsSome && (bucket.BidCandleStick.Value.OpenTimestamp + candleStickSeconds < currentTime))
                         then
+                            bucket.BidCandleStick.Value.MarkComplete()
                             onQuoteCandleStick.Invoke(bucket.BidCandleStick.Value)
                             bucket.BidCandleStick <- Option.None
                     finally
@@ -140,16 +150,19 @@ type CandleStickClient(
                     bucket.Locker.EnterWriteLock()
                     if (bucket.TradeCandleStick.IsSome)
                     then
-                        if (bucket.TradeCandleStick.Value.OpenTimestamp + CandleStickSeconds < trade.Timestamp)
+                        if (bucket.TradeCandleStick.Value.OpenTimestamp + candleStickSeconds < trade.Timestamp)
                         then
+                            bucket.TradeCandleStick.Value.MarkComplete()
                             onTradeCandleStick.Invoke(bucket.TradeCandleStick.Value)
-                            bucket.TradeCandleStick <- Some(new TradeCandleStick(trade.Contract, trade.Size, trade.Price, trade.Timestamp, trade.Timestamp + CandleStickSeconds))
+                            bucket.TradeCandleStick <- Some(new TradeCandleStick(trade.Contract, trade.Size, trade.Price, trade.Timestamp, trade.Timestamp + candleStickSeconds))
                         elif (bucket.TradeCandleStick.Value.OpenTimestamp <= trade.Timestamp)
                         then
-                            bucket.TradeCandleStick.Value.Update(trade.Size, trade.Price)                    
+                            bucket.TradeCandleStick.Value.Update(trade.Size, trade.Price)
+                            if broadcastPartialCandles then onTradeCandleStick.Invoke(bucket.TradeCandleStick.Value)
                         //else This is a late trade.  We already shipped the candle, so ignore
                     else
-                        bucket.TradeCandleStick <- Some(new TradeCandleStick(trade.Contract, trade.Size, trade.Price, trade.Timestamp, trade.Timestamp + CandleStickSeconds))
+                        bucket.TradeCandleStick <- Some(new TradeCandleStick(trade.Contract, trade.Size, trade.Price, trade.Timestamp, trade.Timestamp + candleStickSeconds))
+                        if broadcastPartialCandles then onTradeCandleStick.Invoke(bucket.TradeCandleStick.Value)
                 finally bucket.Locker.ExitWriteLock()
         with ex ->
             Log.Warning("Error on handling trade in CandleStick Client: {0}", ex.Message)

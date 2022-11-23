@@ -17,9 +17,13 @@ namespace SampleApp
 		private static UInt64 _largeTradeCount = 0UL;
 		private static UInt64 _unusualSweepCount = 0UL;
 		private static UInt64 _tradeCandleStickCount = 0UL;
+		private static UInt64 _tradeCandleStickCountIncomplete = 0UL;
 		private static UInt64 _AskCandleStickCount = 0UL;
+		private static UInt64 _AskCandleStickCountIncomplete = 0UL;
 		private static UInt64 _BidCandleStickCount = 0UL;
-		private static bool _useCandleSticks = false;
+		private static UInt64 _BidCandleStickCountIncomplete = 0UL;
+		private static bool _useTradeCandleSticks = false;
+		private static bool _useQuoteCandleSticks = false;
 
 		static void OnQuote(Quote quote)
 		{
@@ -60,15 +64,24 @@ namespace SampleApp
 		
 		static void OnTradeCandleStick(TradeCandleStick tradeCandleStick)
 		{
-			Interlocked.Increment(ref _tradeCandleStickCount);
+			if (tradeCandleStick.Complete)
+				Interlocked.Increment(ref _tradeCandleStickCount);
+			else
+				Interlocked.Increment(ref _tradeCandleStickCountIncomplete);
 		}
 		
 		static void OnQuoteCandleStick(QuoteCandleStick quoteCandleStick)
 		{
 			if (quoteCandleStick.QuoteType == QuoteType.Ask)
-				Interlocked.Increment(ref _AskCandleStickCount);
+				if (quoteCandleStick.Complete)
+					Interlocked.Increment(ref _AskCandleStickCount);
+				else
+					Interlocked.Increment(ref _AskCandleStickCountIncomplete);
 			else
-				Interlocked.Increment(ref _BidCandleStickCount);
+				if (quoteCandleStick.Complete)
+					Interlocked.Increment(ref _BidCandleStickCount);
+				else
+					Interlocked.Increment(ref _BidCandleStickCountIncomplete);
 		}
 
 		static void TimerCallback(object obj)
@@ -77,8 +90,10 @@ namespace SampleApp
 			Tuple<UInt64, UInt64, int> stats = client.GetStats();
 			Client.Log("CLIENT STATS - Data Messages = {0}, Text Messages = {1}, Queue Depth = {2}", stats.Item1, stats.Item2, stats.Item3);
 			Client.Log("EVENT STATS - Trades = {0}, Quotes = {1}, Refreshes = {2}, Blocks = {3}, Sweeps = {4}, Large Trades = {5}, UnusualSweeps = {6}", _tradeCount, _quoteCount, _refreshCount, _blockCount, _sweepCount, _largeTradeCount, _unusualSweepCount);
-			if (_useCandleSticks)
-				Client.Log("CANDLESTICK STATS - TradeCandleSticks = {0}, AskCandleSticks = {1}, BidCandleSticks = {2}", _tradeCandleStickCount, _AskCandleStickCount, _BidCandleStickCount);
+			if (_useTradeCandleSticks)
+				Client.Log("TRADE CANDLESTICK STATS - TradeCandleSticks = {0}, TradeCandleSticksIncomplete = {1}", _tradeCandleStickCount, _tradeCandleStickCountIncomplete);
+			if (_useQuoteCandleSticks)
+				Client.Log("QUOTE CANDLESTICK STATS - Asks = {0}, Bids = {1}, AsksIncomplete = {2}, BidsIncomplete = {3}", _AskCandleStickCount, _BidCandleStickCount, _AskCandleStickCountIncomplete, _BidCandleStickCountIncomplete);
 		}
 
 		static void Cancel(object sender, ConsoleCancelEventArgs args)
@@ -86,7 +101,7 @@ namespace SampleApp
 			Client.Log("Stopping sample app");
 			_timer.Dispose();
 			_client.Stop();
-			if (_useCandleSticks) 
+			if (_useTradeCandleSticks || _useQuoteCandleSticks)
 				_candleStickClient.Stop();
 			Environment.Exit(0);
 		}
@@ -98,12 +113,13 @@ namespace SampleApp
 			Action<Quote> onQuote = OnQuote;
 			
 			//Subscribe the candlestick client to trade and/or quote events as well.  It's important any method subscribed this way handles exceptions so as to not cause issues for other subscribers!
-			_useCandleSticks = true;
-			_candleStickClient = new CandleStickClient(OnTradeCandleStick, OnQuoteCandleStick, 60.0);
-			onTrade += _candleStickClient.OnTrade;
-			onQuote += _candleStickClient.OnQuote;
-			_candleStickClient.Start();
-
+			// _useTradeCandleSticks = true;
+			// _useQuoteCandleSticks = true;
+			// _candleStickClient = new CandleStickClient(OnTradeCandleStick, OnQuoteCandleStick, 60.0, true);
+			// onTrade += _candleStickClient.OnTrade;
+			// onQuote += _candleStickClient.OnQuote;
+			// _candleStickClient.Start();
+			
 			// Register only the callbacks that you want.
 			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
 			_client = new Client(onTrade: onTrade, onQuote: onQuote, onRefresh: OnRefresh, onUnusualActivity: OnUnusualActivity);

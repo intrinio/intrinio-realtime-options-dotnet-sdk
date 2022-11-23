@@ -295,6 +295,7 @@ type TradeCandleStick =
     val Open: float
     val OpenTimestamp: float
     val CloseTimestamp: float
+    val mutable Complete: bool
     
     new(contract: string, volume: uint32, price: float, openTimestamp: float, closeTimestamp : float) =
         {
@@ -306,6 +307,7 @@ type TradeCandleStick =
             Open = price
             OpenTimestamp = openTimestamp
             CloseTimestamp = closeTimestamp
+            Complete = false
         }
         
     member this.GetStrikePrice() : float32 =
@@ -338,6 +340,9 @@ type TradeCandleStick =
         this.Low <- if price < this.Low then price else this.Low
         this.Close <- price
         
+    member internal this.MarkComplete() : unit =
+        this.Complete <- true
+        
 type QuoteCandleStick =
     val Contract: string
     val mutable High: float
@@ -347,6 +352,7 @@ type QuoteCandleStick =
     val QuoteType: QuoteType
     val OpenTimestamp: float
     val CloseTimestamp: float
+    val mutable Complete : bool
     
     new(contract: string,
         price: float,
@@ -362,6 +368,7 @@ type QuoteCandleStick =
             QuoteType = quoteType
             OpenTimestamp = openTimestamp
             CloseTimestamp = closeTimestamp
+            Complete = false
         }
         
     member this.GetStrikePrice() : float32 =
@@ -392,3 +399,6 @@ type QuoteCandleStick =
         this.High <- if price > this.High then price else this.High
         this.Low <- if price < this.Low then price else this.Low
         this.Close <- price
+        
+    member internal this.MarkComplete() : unit =
+        this.Complete <- true
