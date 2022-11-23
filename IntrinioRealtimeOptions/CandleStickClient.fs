@@ -65,7 +65,7 @@ type CandleStickClient(
     let onAsk(quote: Quote, bucket: ContractBucket) : unit =
         if (bucket.AskCandleStick.IsSome && not (Double.IsNaN(quote.AskPrice)))
         then
-            if (bucket.AskCandleStick.Value.OpenTimestamp + candleStickSeconds < quote.Timestamp)
+            if (bucket.AskCandleStick.Value.CloseTimestamp < quote.Timestamp)
             then
                 bucket.AskCandleStick.Value.MarkComplete()
                 onQuoteCandleStick.Invoke(bucket.AskCandleStick.Value)
@@ -83,7 +83,7 @@ type CandleStickClient(
     let onBid(quote: Quote, bucket : ContractBucket) : unit =        
         if (bucket.BidCandleStick.IsSome && not (Double.IsNaN(quote.BidPrice)))
         then
-            if (bucket.BidCandleStick.Value.OpenTimestamp + candleStickSeconds < quote.Timestamp)
+            if (bucket.BidCandleStick.Value.CloseTimestamp < quote.Timestamp)
             then
                 bucket.BidCandleStick.Value.MarkComplete()
                 onQuoteCandleStick.Invoke(bucket.BidCandleStick.Value)
@@ -116,17 +116,17 @@ type CandleStickClient(
                     let currentTime : float = getCurrentTimestamp()
                     bucket.Locker.EnterWriteLock()
                     try
-                        if (useOnQuoteCandleStick && bucket.TradeCandleStick.IsSome && (bucket.TradeCandleStick.Value.OpenTimestamp + candleStickSeconds < currentTime))
+                        if (useOnQuoteCandleStick && bucket.TradeCandleStick.IsSome && (bucket.TradeCandleStick.Value.CloseTimestamp < currentTime))
                         then
                             bucket.TradeCandleStick.Value.MarkComplete()
                             onTradeCandleStick.Invoke(bucket.TradeCandleStick.Value)
                             bucket.TradeCandleStick <- Option.None
-                        if (useOnQuoteCandleStick && bucket.AskCandleStick.IsSome && (bucket.AskCandleStick.Value.OpenTimestamp + candleStickSeconds < currentTime))
+                        if (useOnQuoteCandleStick && bucket.AskCandleStick.IsSome && (bucket.AskCandleStick.Value.CloseTimestamp < currentTime))
                         then
                             bucket.AskCandleStick.Value.MarkComplete()
                             onQuoteCandleStick.Invoke(bucket.AskCandleStick.Value)
                             bucket.AskCandleStick <- Option.None
-                        if (useOnQuoteCandleStick && bucket.BidCandleStick.IsSome && (bucket.BidCandleStick.Value.OpenTimestamp + candleStickSeconds < currentTime))
+                        if (useOnQuoteCandleStick && bucket.BidCandleStick.IsSome && (bucket.BidCandleStick.Value.CloseTimestamp < currentTime))
                         then
                             bucket.BidCandleStick.Value.MarkComplete()
                             onQuoteCandleStick.Invoke(bucket.BidCandleStick.Value)
@@ -150,7 +150,7 @@ type CandleStickClient(
                     bucket.Locker.EnterWriteLock()
                     if (bucket.TradeCandleStick.IsSome)
                     then
-                        if (bucket.TradeCandleStick.Value.OpenTimestamp + candleStickSeconds < trade.Timestamp)
+                        if (bucket.TradeCandleStick.Value.CloseTimestamp < trade.Timestamp)
                         then
                             bucket.TradeCandleStick.Value.MarkComplete()
                             onTradeCandleStick.Invoke(bucket.TradeCandleStick.Value)
