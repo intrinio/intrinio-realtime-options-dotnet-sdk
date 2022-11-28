@@ -20,6 +20,9 @@ module private CandleStickClientInline =
     let inline private stackalloc<'a when 'a: unmanaged> (length: int): Span<'a> =
         let p = NativePtr.stackalloc<'a> length |> NativePtr.toVoidPtr
         Span<'a>(p, length)
+        
+    let inline internal getCurrentTimestamp() : float =
+        (DateTime.UtcNow - DateTime.UnixEpoch.ToUniversalTime()).TotalSeconds
      
 type internal ContractBucket =
     val mutable TradeCandleStick : TradeCandleStick option
@@ -98,9 +101,6 @@ type CandleStickClient(
             bucket.BidCandleStick <- Some(new QuoteCandleStick(quote.Contract, quote.BidPrice, QuoteType.Bid, quote.Timestamp, quote.Timestamp + candleStickSeconds))
             if broadcastPartialCandles then onQuoteCandleStick.Invoke(bucket.BidCandleStick.Value)
             
-    let getCurrentTimestamp() : float =
-        (DateTime.UtcNow - DateTime.UnixEpoch.ToUniversalTime()).TotalSeconds
-            
     let flushFn () : unit =
         Log.Information("Starting candlestick expiration watcher...")
         let ct = ctSource.Token
@@ -113,7 +113,7 @@ type CandleStickClient(
                 contractsLock.ExitReadLock()
                 for key in keys do
                     let bucket : ContractBucket = getSlot(key)
-                    let currentTime : float = getCurrentTimestamp()
+                    let currentTime : float = CandleStickClientInline.getCurrentTimestamp()
                     bucket.Locker.EnterWriteLock()
                     try
                         if (useOnQuoteCandleStick && bucket.TradeCandleStick.IsSome && (bucket.TradeCandleStick.Value.CloseTimestamp < currentTime))
