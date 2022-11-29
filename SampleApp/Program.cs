@@ -148,7 +148,7 @@ namespace SampleApp
 			//_client.Join("AAPL_230616P250.000");
 
 			// Use this to subscribe, dynamically, a list of specific option contracts or option chains.
-			//string[] contracts = { "GOOG_220408C2870.000", "MSFT_220408C315.000", "AAPL_220414C180.000", "TSLA", "GE" };
+			//string[] contracts = { "GOOG__220408C02870000", "MSFT__220408C00315000", "AAPL__220414C00180000", "TSLA", "GE" };
             //_client.Join(contracts);
 
 			Console.CancelKeyPress += new ConsoleCancelEventHandler(Cancel);
