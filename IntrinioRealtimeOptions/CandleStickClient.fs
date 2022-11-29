@@ -182,7 +182,8 @@ type CandleStickClient(
             
     member _.Start() : unit =
         if not flushThread.IsAlive
-                then flushThread.Start()
+        then
+            flushThread.Start()
             
     member _.Stop() : unit = 
         ctSource.Cancel()

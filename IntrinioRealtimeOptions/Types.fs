@@ -296,6 +296,8 @@ type TradeCandleStick =
     val OpenTimestamp: float
     val CloseTimestamp: float
     val mutable Complete: bool
+    val mutable Mass: float
+    val mutable Change: float
     
     new(contract: string, volume: uint32, price: float, openTimestamp: float, closeTimestamp : float) =
         {
@@ -308,7 +310,12 @@ type TradeCandleStick =
             OpenTimestamp = openTimestamp
             CloseTimestamp = closeTimestamp
             Complete = false
+            Mass = System.Convert.ToDouble(volume) * price
+            Change = 0.0
         }
+        
+    member this.GetAveragePrice() : float =
+        this.Mass / System.Convert.ToDouble(this.Volume)
         
     member this.GetStrikePrice() : float32 =
         let whole : uint16 = (uint16 this.Contract.[13] - uint16 '0') * 10_000us + (uint16 this.Contract.[14] - uint16 '0') * 1000us + (uint16 this.Contract.[15] - uint16 '0') * 100us + (uint16 this.Contract.[16] - uint16 '0') * 10us + (uint16 this.Contract.[17] - uint16 '0')
@@ -324,7 +331,7 @@ type TradeCandleStick =
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
 
     override this.ToString() : string =
-        sprintf "TradeCandleStick (Contract: %s, Volume: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s)"
+        sprintf "TradeCandleStick (Contract: %s, Volume: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s, AveragePrice: %s, Change: %s)"
             this.Contract
             (this.Volume.ToString())
             (this.High.ToString("f3"))
@@ -333,12 +340,16 @@ type TradeCandleStick =
             (this.Open.ToString("f3"))
             (this.OpenTimestamp.ToString("f6"))
             (this.CloseTimestamp.ToString("f6"))
+            (this.GetAveragePrice().ToString("f3"))
+            (this.Change.ToString("f6"))
             
     member internal this.Update(volume: uint32, price: float) : unit = 
         this.Volume <- this.Volume + volume
         this.High <- if price > this.High then price else this.High
         this.Low <- if price < this.Low then price else this.Low
         this.Close <- price
+        this.Mass <- this.Mass + (System.Convert.ToDouble(volume) * price)
+        this.Change <- (this.Close - this.Open) / this.Open
         
     member internal this.MarkComplete() : unit =
         this.Complete <- true
@@ -352,7 +363,8 @@ type QuoteCandleStick =
     val QuoteType: QuoteType
     val OpenTimestamp: float
     val CloseTimestamp: float
-    val mutable Complete : bool
+    val mutable Complete: bool
+    val mutable Change: float
     
     new(contract: string,
         price: float,
@@ -369,6 +381,7 @@ type QuoteCandleStick =
             OpenTimestamp = openTimestamp
             CloseTimestamp = closeTimestamp
             Complete = false
+            Change = 0.0
         }
         
     member this.GetStrikePrice() : float32 =
@@ -385,7 +398,7 @@ type QuoteCandleStick =
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
 
     override this.ToString() : string =
-        sprintf "QuoteCandleStick (Contract: %s, QuoteType: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s)"
+        sprintf "QuoteCandleStick (Contract: %s, QuoteType: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s, Change: %s)"
             this.Contract
             (this.QuoteType.ToString())
             (this.High.ToString("f3"))
@@ -394,11 +407,13 @@ type QuoteCandleStick =
             (this.Open.ToString("f3"))
             (this.OpenTimestamp.ToString("f6"))
             (this.CloseTimestamp.ToString("f6"))
+            (this.Change.ToString("f6"))
             
     member this.Update(price: float) : unit = 
         this.High <- if price > this.High then price else this.High
         this.Low <- if price < this.Low then price else this.Low
         this.Close <- price
+        this.Change <- (this.Close - this.Open) / this.Open
         
     member internal this.MarkComplete() : unit =
         this.Complete <- true

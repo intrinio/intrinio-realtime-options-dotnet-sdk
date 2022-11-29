@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections;
 using System.Threading;
 using Intrinio;
+
 
 namespace SampleApp
 {
@@ -65,9 +67,13 @@ namespace SampleApp
 		static void OnTradeCandleStick(TradeCandleStick tradeCandleStick)
 		{
 			if (tradeCandleStick.Complete)
+			{
 				Interlocked.Increment(ref _tradeCandleStickCount);
+			}
 			else
+			{
 				Interlocked.Increment(ref _tradeCandleStickCountIncomplete);
+			}
 		}
 		
 		static void OnQuoteCandleStick(QuoteCandleStick quoteCandleStick)
@@ -102,10 +108,13 @@ namespace SampleApp
 			_timer.Dispose();
 			_client.Stop();
 			if (_useTradeCandleSticks || _useQuoteCandleSticks)
+			{
 				_candleStickClient.Stop();
+			}
+
 			Environment.Exit(0);
 		}
-
+		
 		static void Main(string[] args)
 		{
 			Client.Log("Starting sample app");
@@ -139,8 +148,8 @@ namespace SampleApp
 			//_client.Join("AAPL_230616P250.000");
 
 			// Use this to subscribe, dynamically, a list of specific option contracts or option chains.
-			//string[] clients = { "GOOG_220408C2870.000", "MSFT_220408C315.000", "AAPL_220414C180.000", "TSLA", "GE" };
-            //_client.Join(clients);
+			//string[] contracts = { "GOOG_220408C2870.000", "MSFT_220408C315.000", "AAPL_220414C180.000", "TSLA", "GE" };
+            //_client.Join(contracts);
 
 			Console.CancelKeyPress += new ConsoleCancelEventHandler(Cancel);
 		}		
