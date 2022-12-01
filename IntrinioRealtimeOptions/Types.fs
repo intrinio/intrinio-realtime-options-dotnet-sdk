@@ -1,4 +1,4 @@
-﻿namespace Intrinio
+namespace Intrinio
 
 open System
 open System.Globalization
@@ -41,6 +41,17 @@ module private TypesInline =
 type QuoteType =
     | Ask = 0
     | Bid = 1
+    
+type IntervalType =
+    | OneMinute = 60
+    | TwoMinute = 120
+    | ThreeMinute = 180
+    | FourMinute = 240
+    | FiveMinute = 300
+    | TenMinute = 600
+    | FifteenMinute = 900
+    | ThirtyMinute = 1800
+    | SixtyMinute = 3600
 
 /// <summary>
 /// A 'Quote' is a unit of data representing an individual market bid or ask event.
@@ -298,8 +309,9 @@ type TradeCandleStick =
     val mutable Complete: bool
     val mutable Mass: float
     val mutable Change: float
+    val Interval: IntervalType
     
-    new(contract: string, volume: uint32, price: float, openTimestamp: float, closeTimestamp : float) =
+    new(contract: string, volume: uint32, price: float, openTimestamp: float, closeTimestamp : float, interval : IntervalType) =
         {
             Contract = contract
             Volume = volume
@@ -312,6 +324,7 @@ type TradeCandleStick =
             Complete = false
             Mass = System.Convert.ToDouble(volume) * price
             Change = 0.0
+            Interval = interval
         }
         
     member this.GetAveragePrice() : float =
@@ -353,7 +366,7 @@ type TradeCandleStick =
         
     member internal this.MarkComplete() : unit =
         this.Complete <- true
-        
+
 type QuoteCandleStick =
     val Contract: string
     val mutable High: float
@@ -365,12 +378,14 @@ type QuoteCandleStick =
     val CloseTimestamp: float
     val mutable Complete: bool
     val mutable Change: float
+    val Interval: IntervalType
     
     new(contract: string,
         price: float,
         quoteType: QuoteType,
         openTimestamp: float,
-        closeTimestamp: float) =
+        closeTimestamp: float,
+        interval: IntervalType) =
         {
             Contract = contract
             High = price
@@ -382,6 +397,7 @@ type QuoteCandleStick =
             CloseTimestamp = closeTimestamp
             Complete = false
             Change = 0.0
+            Interval = interval
         }
         
     member this.GetStrikePrice() : float32 =

@@ -251,7 +251,9 @@ type Client(
                     let mutable startIndex = 1
                     for _ in 1 .. cnt do
                         parseSocketMessage(datum, &startIndex)
-            with :? OperationCanceledException -> ()
+            with
+                | :? OperationCanceledException -> ()
+                | :? Exception as e -> Log.Error("Parse data failure: {0}", e.Message)
 
     let threads : Thread[] = Array.init config.NumThreads (fun _ -> new Thread(new ThreadStart(threadFn)))
 
@@ -504,5 +506,3 @@ type Client(
     member _.GetStats() : (uint64 * uint64 * int) = (Interlocked.Read(&dataMsgCount), Interlocked.Read(&textMsgCount), data.Count)
 
     static member Log(messageTemplate:string, [<ParamArray>] propertyValues:obj[]) = Log.Information(messageTemplate, propertyValues)
-
-
