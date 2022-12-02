@@ -246,7 +246,7 @@ type Client(
                 if data.TryTake(&datum,1000) then
                     // These are grouped (many) messages.
                     // The first byte tells us how many there are.
-                    // From there, check the type at index 21 to know how many bytes each message has.
+                    // From there, check the type at index 22 to know how many bytes each message has.
                     let cnt = datum[0] |> int
                     let mutable startIndex = 1
                     for _ in 1 .. cnt do

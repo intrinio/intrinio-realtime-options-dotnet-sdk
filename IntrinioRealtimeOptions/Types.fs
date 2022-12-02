@@ -303,15 +303,17 @@ type TradeCandleStick =
     val mutable High: float
     val mutable Low: float
     val mutable Close: float
-    val Open: float
+    val mutable Open: float
     val OpenTimestamp: float
     val CloseTimestamp: float
+    val mutable FirstTimestamp: float
+    val mutable LastTimestamp: float
     val mutable Complete: bool
-    val mutable Mass: float
+    val mutable Average: float
     val mutable Change: float
     val Interval: IntervalType
     
-    new(contract: string, volume: uint32, price: float, openTimestamp: float, closeTimestamp : float, interval : IntervalType) =
+    new(contract: string, volume: uint32, price: float, openTimestamp: float, closeTimestamp : float, interval : IntervalType, tradeTime : float) =
         {
             Contract = contract
             Volume = volume
@@ -321,14 +323,31 @@ type TradeCandleStick =
             Open = price
             OpenTimestamp = openTimestamp
             CloseTimestamp = closeTimestamp
+            FirstTimestamp = tradeTime
+            LastTimestamp = tradeTime
             Complete = false
-            Mass = System.Convert.ToDouble(volume) * price
+            Average = price
             Change = 0.0
             Interval = interval
         }
         
-    member this.GetAveragePrice() : float =
-        this.Mass / System.Convert.ToDouble(this.Volume)
+    new(contract: string, volume: uint32, high: float, low: float, closePrice: float, openPrice: float, openTimestamp: float, closeTimestamp : float, firstTimestamp: float, lastTimestamp: float, complete: bool, average: float, change: float, interval : IntervalType) =
+        {
+            Contract = contract
+            Volume = volume
+            High = high
+            Low = low
+            Close = closePrice
+            Open = openPrice
+            OpenTimestamp = openTimestamp
+            CloseTimestamp = closeTimestamp
+            FirstTimestamp = firstTimestamp
+            LastTimestamp = lastTimestamp
+            Complete = complete
+            Average = average
+            Change = change
+            Interval = interval
+        }
         
     member this.GetStrikePrice() : float32 =
         let whole : uint16 = (uint16 this.Contract.[13] - uint16 '0') * 10_000us + (uint16 this.Contract.[14] - uint16 '0') * 1000us + (uint16 this.Contract.[15] - uint16 '0') * 100us + (uint16 this.Contract.[16] - uint16 '0') * 10us + (uint16 this.Contract.[17] - uint16 '0')
@@ -353,15 +372,29 @@ type TradeCandleStick =
             (this.Open.ToString("f3"))
             (this.OpenTimestamp.ToString("f6"))
             (this.CloseTimestamp.ToString("f6"))
-            (this.GetAveragePrice().ToString("f3"))
+            (this.Average.ToString("f3"))
             (this.Change.ToString("f6"))
             
-    member internal this.Update(volume: uint32, price: float) : unit = 
+    member this.Merge(candle: TradeCandleStick) : unit =
+        this.Average <- ((System.Convert.ToDouble(this.Volume) * this.Average) + (System.Convert.ToDouble(candle.Volume) * candle.Average)) / (System.Convert.ToDouble(this.Volume + candle.Volume))
+        this.Volume <- this.Volume + candle.Volume
+        this.High <- if this.High > candle.High then this.High else candle.High
+        this.Low <- if this.Low < candle.Low then this.Low else candle.Low
+        this.Close <- if this.LastTimestamp > candle.LastTimestamp then this.Close else candle.Close
+        this.Open <- if this.FirstTimestamp < candle.FirstTimestamp then this.Open else candle.Open
+        this.FirstTimestamp <- if candle.FirstTimestamp < this.FirstTimestamp then candle.FirstTimestamp else this.FirstTimestamp
+        this.LastTimestamp <- if candle.LastTimestamp > this.LastTimestamp then candle.LastTimestamp else this.LastTimestamp
+        this.Change <- (this.Close - this.Open) / this.Open
+            
+    member internal this.Update(volume: uint32, price: float, time: float) : unit = 
+        this.Average <- ((System.Convert.ToDouble(this.Volume) * this.Average) + (System.Convert.ToDouble(volume) * price)) / (System.Convert.ToDouble(this.Volume + volume)) 
         this.Volume <- this.Volume + volume
         this.High <- if price > this.High then price else this.High
         this.Low <- if price < this.Low then price else this.Low
-        this.Close <- price
-        this.Mass <- this.Mass + (System.Convert.ToDouble(volume) * price)
+        this.Close <- if time > this.LastTimestamp then price else this.Close
+        this.Open <- if time < this.FirstTimestamp then price else this.Open
+        this.FirstTimestamp <- if time < this.FirstTimestamp then time else this.FirstTimestamp
+        this.LastTimestamp <- if time > this.LastTimestamp then time else this.LastTimestamp
         this.Change <- (this.Close - this.Open) / this.Open
         
     member internal this.MarkComplete() : unit =
@@ -372,10 +405,12 @@ type QuoteCandleStick =
     val mutable High: float
     val mutable Low: float
     val mutable Close: float
-    val Open: float
+    val mutable Open: float
     val QuoteType: QuoteType
     val OpenTimestamp: float
     val CloseTimestamp: float
+    val mutable FirstTimestamp: float
+    val mutable LastTimestamp: float
     val mutable Complete: bool
     val mutable Change: float
     val Interval: IntervalType
@@ -385,7 +420,8 @@ type QuoteCandleStick =
         quoteType: QuoteType,
         openTimestamp: float,
         closeTimestamp: float,
-        interval: IntervalType) =
+        interval: IntervalType,
+        tradeTime: float) =
         {
             Contract = contract
             High = price
@@ -395,8 +431,39 @@ type QuoteCandleStick =
             QuoteType = quoteType
             OpenTimestamp = openTimestamp
             CloseTimestamp = closeTimestamp
+            FirstTimestamp = tradeTime
+            LastTimestamp = tradeTime
             Complete = false
             Change = 0.0
+            Interval = interval
+        }
+        
+    new(contract: string,
+        high: float,
+        low: float,
+        closePrice: float,
+        openPrice: float,
+        quoteType: QuoteType,
+        openTimestamp: float,
+        closeTimestamp: float,
+        firstTimestamp: float,
+        lastTimestamp: float,
+        complete: bool,
+        change: float,
+        interval: IntervalType) =
+        {
+            Contract = contract
+            High = high
+            Low = low
+            Close = closePrice
+            Open = openPrice
+            QuoteType = quoteType
+            OpenTimestamp = openTimestamp
+            CloseTimestamp = closeTimestamp
+            FirstTimestamp = firstTimestamp
+            LastTimestamp = lastTimestamp
+            Complete = complete
+            Change = change
             Interval = interval
         }
         
@@ -425,10 +492,22 @@ type QuoteCandleStick =
             (this.CloseTimestamp.ToString("f6"))
             (this.Change.ToString("f6"))
             
-    member this.Update(price: float) : unit = 
+    member this.Merge(candle: QuoteCandleStick) : unit =
+        this.High <- if this.High > candle.High then this.High else candle.High
+        this.Low <- if this.Low < candle.Low then this.Low else candle.Low
+        this.Close <- if this.LastTimestamp > candle.LastTimestamp then this.Close else candle.Close
+        this.Open <- if this.FirstTimestamp < candle.FirstTimestamp then this.Open else candle.Open
+        this.FirstTimestamp <- if candle.FirstTimestamp < this.FirstTimestamp then candle.FirstTimestamp else this.FirstTimestamp
+        this.LastTimestamp <- if candle.LastTimestamp > this.LastTimestamp then candle.LastTimestamp else this.LastTimestamp
+        this.Change <- (this.Close - this.Open) / this.Open
+            
+    member this.Update(price: float, time: float) : unit = 
         this.High <- if price > this.High then price else this.High
         this.Low <- if price < this.Low then price else this.Low
-        this.Close <- price
+        this.Close <- if time > this.LastTimestamp then price else this.Close
+        this.Open <- if time < this.FirstTimestamp then price else this.Open
+        this.FirstTimestamp <- if time < this.FirstTimestamp then time else this.FirstTimestamp
+        this.LastTimestamp <- if time > this.LastTimestamp then time else this.LastTimestamp
         this.Change <- (this.Close - this.Open) / this.Open
         
     member internal this.MarkComplete() : unit =
