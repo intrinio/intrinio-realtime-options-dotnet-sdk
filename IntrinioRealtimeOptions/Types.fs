@@ -361,6 +361,9 @@ type TradeCandleStick =
     member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
+    
+    override this.GetHashCode() : int =
+        this.Contract.GetHashCode() ^^^ this.Interval.GetHashCode() ^^^ this.OpenTimestamp.GetHashCode()
 
     override this.ToString() : string =
         sprintf "TradeCandleStick (Contract: %s, Volume: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s, AveragePrice: %s, Change: %s)"
@@ -479,6 +482,9 @@ type QuoteCandleStick =
     member this.GetExpirationDate() : DateTime = DateTime.ParseExact(this.Contract.Substring(6, 6), "yyMMdd", CultureInfo.InvariantCulture)
 
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
+    
+    override this.GetHashCode() : int =
+        this.Contract.GetHashCode() ^^^ this.Interval.GetHashCode() ^^^ this.OpenTimestamp.GetHashCode() ^^^ this.QuoteType.GetHashCode()
 
     override this.ToString() : string =
         sprintf "QuoteCandleStick (Contract: %s, QuoteType: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s, Change: %s)"
