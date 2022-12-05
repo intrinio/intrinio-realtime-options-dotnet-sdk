@@ -16,6 +16,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="runtimeconfig.template.json" />
+    <Compile Include="CandleStickClient.fs" />
   </ItemGroup>
 
   <ItemGroup>
