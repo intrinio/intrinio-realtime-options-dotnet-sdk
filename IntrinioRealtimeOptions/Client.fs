@@ -1,11 +1,11 @@
 ﻿namespace Intrinio
 
+open Intrinio
 open Serilog
 open System
 open System.Runtime.InteropServices
 open System.Net.Http
 open System.Text
-open System.Text.Json
 open System.Collections.Concurrent
 open System.Collections.Generic
 open System.Threading
@@ -13,6 +13,125 @@ open System.Threading.Tasks
 open System.Net.Sockets
 open WebSocket4Net
 open Intrinio.Config
+open FSharp.NativeInterop
+open System.Runtime.CompilerServices
+
+module private ClientInline =
+
+    let [<Literal>] internal SYMBOL_SIZE : int = 22
+    let [<Literal>] internal TRADE_MESSAGE_SIZE : int = 72
+    let [<Literal>] internal QUOTE_MESSAGE_SIZE : int = 52
+    let [<Literal>] internal REFRESH_MESSAGE_SIZE : int = 52
+    let [<Literal>] internal UNUSUAL_ACTIVITY_MESSAGE_SIZE : int = 74
+
+    let internal SELF_HEAL_BACKOFFS : int[] = [| 10_000; 30_000; 60_000; 300_000; 600_000 |]
+    
+    [<SkipLocalsInit>]
+    let inline private stackalloc<'a when 'a: unmanaged> (length: int): Span<'a> =
+        let p = NativePtr.stackalloc<'a> length |> NativePtr.toVoidPtr
+        Span<'a>(p, length)
+    
+    let inline internal FormatContract (alternateFormattedChars: ReadOnlySpan<byte>) : string =
+        //Transform from server format to normal format
+        //From this: AAPL_201016C100.00 or ABC_201016C100.003
+        //To this:   AAPL__201016C00100000 or ABC___201016C00100003
+        
+        let contractChars : Span<byte> = stackalloc<byte>(21)
+        contractChars[0] <- (byte)'_'
+        contractChars[1] <- (byte)'_'
+        contractChars[2] <- (byte)'_'
+        contractChars[3] <- (byte)'_'
+        contractChars[4] <- (byte)'_'
+        contractChars[5] <- (byte)'_'
+        contractChars[6] <- (byte)'2'
+        contractChars[7] <- (byte)'2'
+        contractChars[8] <- (byte)'0'
+        contractChars[9] <- (byte)'1'
+        contractChars[10] <- (byte)'0'
+        contractChars[11] <- (byte)'1'
+        contractChars[12] <- (byte)'C'
+        contractChars[13] <- (byte)'0'
+        contractChars[14] <- (byte)'0'
+        contractChars[15] <- (byte)'0'
+        contractChars[16] <- (byte)'0'
+        contractChars[17] <- (byte)'0'
+        contractChars[18] <- (byte)'0'
+        contractChars[19] <- (byte)'0'
+        contractChars[20] <- (byte)'0'
+        
+        let underscoreIndex : int = alternateFormattedChars.IndexOf((byte)'_')
+        let decimalIndex : int = alternateFormattedChars.Slice(9).IndexOf((byte)'.') + 9 //ignore decimals in tickersymbol
+
+        alternateFormattedChars.Slice(0, underscoreIndex).CopyTo(contractChars) //copy symbol        
+        alternateFormattedChars.Slice(underscoreIndex + 1, 6).CopyTo(contractChars.Slice(6)) //copy date
+        alternateFormattedChars.Slice(underscoreIndex + 7, 1).CopyTo(contractChars.Slice(12)) //copy put/call
+        alternateFormattedChars.Slice(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.Slice(18 - (decimalIndex - underscoreIndex - 8))) //whole number copy
+        alternateFormattedChars.Slice(decimalIndex + 1).CopyTo(contractChars.Slice(18)) //decimal number copy
+        
+        Encoding.ASCII.GetString(contractChars)
+
+    let inline internal ParseTrade (bytes: ReadOnlySpan<byte>) : Trade =
+        Trade
+            (FormatContract(bytes.Slice(1, int bytes[0])),
+             bytes[23],
+             bytes[24],
+             BitConverter.ToInt32(bytes.Slice(25, 4)),
+             BitConverter.ToUInt32(bytes.Slice(29, 4)),
+             BitConverter.ToUInt64(bytes.Slice(33, 8)),
+             BitConverter.ToUInt64(bytes.Slice(41, 8)),
+             BitConverter.ToInt32(bytes.Slice(49, 4)),
+             BitConverter.ToInt32(bytes.Slice(53, 4)),
+             BitConverter.ToInt32(bytes.Slice(57, 4)))
+
+    let inline internal ParseQuote (bytes: ReadOnlySpan<byte>) : Quote =
+        Quote
+            (FormatContract(bytes.Slice(1, int bytes[0])),
+             bytes[23],
+             BitConverter.ToInt32(bytes.Slice(24, 4)),
+             BitConverter.ToUInt32(bytes.Slice(28, 4)),
+             BitConverter.ToInt32(bytes.Slice(32, 4)),
+             BitConverter.ToUInt32(bytes.Slice(36, 4)),
+             BitConverter.ToUInt64(bytes.Slice(40, 8)))
+
+    let inline internal ParseRefresh (bytes: ReadOnlySpan<byte>) : Refresh =
+        Refresh
+            (FormatContract(bytes.Slice(1, int bytes[0])),
+             bytes[23],
+             BitConverter.ToUInt32(bytes.Slice(24, 4)),
+             BitConverter.ToInt32(bytes.Slice(28, 4)),
+             BitConverter.ToInt32(bytes.Slice(32, 4)),
+             BitConverter.ToInt32(bytes.Slice(36, 4)),
+             BitConverter.ToInt32(bytes.Slice(40, 4)))
+
+    let inline internal ParseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
+        UnusualActivity
+            (FormatContract(bytes.Slice(1, int bytes[0])),
+             enum<UAType> (int bytes[22]),
+             enum<UASentiment> (int bytes[23]),
+             bytes[24],
+             bytes[25],             
+             BitConverter.ToUInt64(bytes.Slice(26, 8)),
+             BitConverter.ToUInt32(bytes.Slice(34, 4)),
+             BitConverter.ToInt32(bytes.Slice(38, 4)),
+             BitConverter.ToInt32(bytes.Slice(42, 4)),
+             BitConverter.ToInt32(bytes.Slice(46, 4)),
+             BitConverter.ToInt32(bytes.Slice(50, 4)),
+             BitConverter.ToUInt64(bytes.Slice(54, 8)))
+
+    let inline internal SetUsesTrade(bitmask: uint8) : uint8 = bitmask ||| 1uy
+    let inline internal SetUsesQuote(bitmask: uint8) : uint8 = bitmask ||| 2uy 
+    let inline internal SetUsesRefresh(bitmask: uint8) : uint8 = bitmask ||| 4uy 
+    let inline internal SetUsesUA(bitmask: uint8) : uint8 = bitmask ||| 8uy
+
+    let inline internal DoBackoff(fn: unit -> bool) : unit =
+        let mutable i : int = 0
+        let mutable backoff : int = SELF_HEAL_BACKOFFS.[i]
+        let mutable success : bool = fn()
+        while not success do
+            Thread.Sleep(backoff)
+            i <- Math.Min(i + 1, SELF_HEAL_BACKOFFS.Length - 1)
+            backoff <- SELF_HEAL_BACKOFFS.[i]
+            success <- fn()
 
 type internal WebSocketState(ws: WebSocket) =
     let mutable webSocket : WebSocket = ws
@@ -39,124 +158,70 @@ type internal WebSocketState(ws: WebSocket) =
 type Client(
     [<Optional; DefaultParameterValue(null:Action<Trade>)>] onTrade: Action<Trade>,
     [<Optional; DefaultParameterValue(null:Action<Quote>)>] onQuote : Action<Quote>,
-    [<Optional; DefaultParameterValue(null:Action<OpenInterest>)>] onOpenInterest: Action<OpenInterest>,
+    [<Optional; DefaultParameterValue(null:Action<Refresh>)>] onRefresh: Action<Refresh>,
     [<Optional; DefaultParameterValue(null:Action<UnusualActivity>)>] onUnusualActivity: Action<UnusualActivity>) =
-    let [<Literal>] heartbeatMessage : string = "{\"topic\":\"phoenix\",\"event\":\"heartbeat\",\"payload\":{},\"ref\":null}"
-    let [<Literal>] heartbeatResponse : string = "{\"topic\":\"phoenix\",\"ref\":null,\"payload\":{\"status\":\"ok\",\"response\":{}},\"event\":\"phx_reply\"}"
-    let [<Literal>] errorResponse : string = "\"status\":\"error\""
-    let selfHealBackoffs : int[] = [| 10_000; 30_000; 60_000; 300_000; 600_000 |]
+    
     let config = LoadConfig()
     let tLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let wsLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let mutable token : (string * DateTime) = (null, DateTime.Now)
-    let mutable wsStates : WebSocketState[] = Array.empty<WebSocketState>
-    let mutable dataMsgCount : int64 = 0L
-    let mutable textMsgCount : int64 = 0L
+    let mutable wsState: WebSocketState = new WebSocketState(null)
+    let mutable dataMsgCount : uint64 = 0UL
+    let mutable textMsgCount : uint64 = 0UL
     let channels : HashSet<string> = new HashSet<string>()
     let ctSource : CancellationTokenSource = new CancellationTokenSource()
     let data : BlockingCollection<byte[]> = new BlockingCollection<byte[]>(new ConcurrentQueue<byte[]>())
-    let mutable tryReconnect : (int -> unit -> unit) = fun (_:int) () -> ()
+    let mutable tryReconnect : (unit -> unit) = fun () -> ()
     let httpClient : HttpClient = new HttpClient()
 
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
     let useOnQuote : bool = not (obj.ReferenceEquals(onQuote,null))
-    let useOnOI : bool = not (obj.ReferenceEquals(onOpenInterest,null))
+    let useOnRefresh : bool = not (obj.ReferenceEquals(onRefresh,null))
     let useOnUA : bool = not (obj.ReferenceEquals(onUnusualActivity,null))
 
     let allReady() : bool = 
         wsLock.EnterReadLock()
-        try wsStates |> Array.forall (fun (wss:WebSocketState) -> wss.IsReady)
+        try wsState.IsReady
         finally wsLock.ExitReadLock()
 
     let getAuthUrl () : string =
         match config.Provider with
         | Provider.OPRA -> "https://realtime-options.intrinio.com/auth?api_key=" + config.ApiKey
-        | Provider.OPRA_FIREHOSE -> "https://realtime-options-firehose.intrinio.com:8000/auth?api_key=" + config.ApiKey
         | Provider.MANUAL -> "http://" + config.IPAddress + "/auth?api_key=" + config.ApiKey
-        | Provider.MANUAL_FIREHOSE -> "http://" + config.IPAddress + ":8000/auth?api_key=" + config.ApiKey
         | _ -> failwith "Provider not specified!"
 
-    let getWebSocketUrl (token: string, index: int) : string =
+    let getWebSocketUrl (token: string) : string =
         match config.Provider with
-        | Provider.OPRA -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token
-        | Provider.OPRA_FIREHOSE -> "wss://realtime-options-firehose.intrinio.com:800" + index.ToString() + "/socket/websocket?vsn=1.0.0&token=" + token
-        | Provider.MANUAL -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token
-        | Provider.MANUAL_FIREHOSE -> "ws://" + config.IPAddress + ":800" + index.ToString() + "/socket/websocket?vsn=1.0.0&token=" + token
-        | _ -> failwith "Provider not specified!"
-
-    let getWebSocketCount () : int =
-        match config.Provider with
-        | Provider.OPRA -> 1
-        | Provider.OPRA_FIREHOSE -> 6
-        | Provider.MANUAL -> 1
-        | Provider.MANUAL_FIREHOSE -> 6
-        | _ -> failwith "Provider not specified!"
-
-    let parseTrade (bytes: ReadOnlySpan<byte>) : Trade =
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
-            Price = BitConverter.ToDouble(bytes.Slice(22, 8))
-            Size = BitConverter.ToUInt32(bytes.Slice(30, 4))
-            Timestamp = BitConverter.ToDouble(bytes.Slice(34, 8))
-            TotalVolume = BitConverter.ToUInt64(bytes.Slice(42, 8))
-        }
-
-    let parseQuote (bytes: ReadOnlySpan<byte>) : Quote =
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
-            Type = enum<QuoteType> (int32 (bytes.Item(21)))
-            Price = BitConverter.ToDouble(bytes.Slice(22, 8))
-            Size = BitConverter.ToUInt32(bytes.Slice(30, 4))
-            Timestamp = BitConverter.ToDouble(bytes.Slice(34, 8))
-        }
-
-    let parseOpenInterest (bytes: ReadOnlySpan<byte>) : OpenInterest =
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
-            OpenInterest = BitConverter.ToInt32(bytes.Slice(22, 4))
-            Timestamp = BitConverter.ToDouble(bytes.Slice(26, 8))
-        }
-
-    let parseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(0, 21))
-            Type = enum<UAType> (int32 (bytes.Item(21)))
-            Sentiment = enum<UASentiment> (int32 (bytes.Item(22)))
-            TotalValue = BitConverter.ToSingle(bytes.Slice(23, 4))
-            TotalSize = BitConverter.ToUInt32(bytes.Slice(27, 4))
-            AveragePrice = BitConverter.ToSingle(bytes.Slice(31, 4))
-            AskAtExecution = BitConverter.ToSingle(bytes.Slice(35, 4))
-            BidAtExecution = BitConverter.ToSingle(bytes.Slice(39, 4))
-            PriceAtExecution = BitConverter.ToSingle(bytes.Slice(43, 4))
-            Timestamp = BitConverter.ToDouble(bytes.Slice(47, 8))
-        }
-
+          | Provider.OPRA -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token
+          | Provider.MANUAL -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token
+          | _ -> failwith "Provider not specified!"
+    
     let parseSocketMessage (bytes: byte[], startIndex: byref<int>) : unit =
-        let msgType : int = int32 bytes.[startIndex + 21]
-        if ((msgType = 1) || (msgType = 2))
-        then 
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 42)
-            let quote: Quote = parseQuote(chunk)
-            startIndex <- startIndex + 42
+        let msgType : uint8 = bytes[startIndex + ClientInline.SYMBOL_SIZE] //This works because it's startIndex + maxSymbolSize - 1 (zero based) + 1 (size of type)
+        if (msgType = 1uy) //using if-else vs switch for hotpathing
+        then
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, ClientInline.QUOTE_MESSAGE_SIZE)
+            let quote: Quote = ClientInline.ParseQuote(chunk)
+            startIndex <- startIndex + ClientInline.QUOTE_MESSAGE_SIZE
             if useOnQuote then onQuote.Invoke(quote)
-        elif (msgType = 0)
+        elif (msgType = 0uy)
         then
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 50)
-            let trade: Trade = parseTrade(chunk)
-            startIndex <- startIndex + 50
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, ClientInline.TRADE_MESSAGE_SIZE)
+            let trade: Trade = ClientInline.ParseTrade(chunk)
+            startIndex <- startIndex + ClientInline.TRADE_MESSAGE_SIZE
             if useOnTrade then onTrade.Invoke(trade)
-        elif (msgType > 3)
+        elif (msgType > 2uy)
         then
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 55)
-            let ua: UnusualActivity = parseUnusualActivity(chunk)
-            startIndex <- startIndex + 55
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, ClientInline.UNUSUAL_ACTIVITY_MESSAGE_SIZE)
+            let ua: UnusualActivity = ClientInline.ParseUnusualActivity(chunk)
+            startIndex <- startIndex + ClientInline.UNUSUAL_ACTIVITY_MESSAGE_SIZE
             if useOnUA then onUnusualActivity.Invoke(ua)
-        elif (msgType = 3)
+        elif (msgType = 2uy)
         then
-            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, 34)
-            let openInterest = parseOpenInterest(chunk)
-            startIndex <- startIndex + 34
-            if useOnOI then onOpenInterest.Invoke(openInterest)
+            let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, ClientInline.REFRESH_MESSAGE_SIZE)
+            let refresh = ClientInline.ParseRefresh(chunk)
+            startIndex <- startIndex + ClientInline.REFRESH_MESSAGE_SIZE
+            if useOnRefresh then onRefresh.Invoke(refresh)
         else Log.Warning("Invalid MessageType: {0}", msgType)
 
     let heartbeatFn () =
@@ -167,9 +232,8 @@ type Client(
             Log.Debug("Sending heartbeat")
             wsLock.EnterReadLock()
             try
-                wsStates |> Array.iter (fun (wss: WebSocketState) ->
-                    if not(ct.IsCancellationRequested) && wss.IsReady
-                    then wss.WebSocket.Send(heartbeatMessage) )
+                if not(ct.IsCancellationRequested) && wsState.IsReady
+                then wsState.WebSocket.Send("")
             finally wsLock.ExitReadLock()
 
     let heartbeat : Thread = new Thread(new ThreadStart(heartbeatFn))
@@ -182,24 +246,16 @@ type Client(
                 if data.TryTake(&datum,1000) then
                     // These are grouped (many) messages.
                     // The first byte tells us how many there are.
-                    // From there, check the type at index 21 to know how many bytes each message has.
-                    let cnt = datum.[0] |> int
+                    // From there, check the type at index 22 to know how many bytes each message has.
+                    let cnt = datum[0] |> int
                     let mutable startIndex = 1
                     for _ in 1 .. cnt do
                         parseSocketMessage(datum, &startIndex)
-            with :? OperationCanceledException -> ()
+            with
+                | :? OperationCanceledException -> ()
+                | :? Exception as e -> Log.Error("Parse data failure: {0}", e.Message)
 
     let threads : Thread[] = Array.init config.NumThreads (fun _ -> new Thread(new ThreadStart(threadFn)))
-
-    let doBackoff(fn: unit -> bool) : unit =
-        let mutable i : int = 0
-        let mutable backoff : int = selfHealBackoffs.[i]
-        let mutable success : bool = fn()
-        while not success do
-            Thread.Sleep(backoff)
-            i <- Math.Min(i + 1, selfHealBackoffs.Length - 1)
-            backoff <- selfHealBackoffs.[i]
-            success <- fn()
 
     let trySetToken() : bool =
         Log.Information("Authorizing...")
@@ -235,17 +291,17 @@ type Client(
             then (fst token)
             else
                 tLock.EnterWriteLock()
-                try doBackoff(trySetToken)
+                try ClientInline.DoBackoff(trySetToken)
                 finally tLock.ExitWriteLock()
                 fst token
         finally tLock.ExitUpgradeableReadLock()
 
-    let onOpen (index : int) (_ : EventArgs) : unit =
-        Log.Information("Websocket {0} - Connected", index)
+    let onOpen (_ : EventArgs) : unit =
+        Log.Information("Websocket - Connected")
         wsLock.EnterWriteLock()
         try
-            wsStates.[index].IsReady <- true
-            wsStates.[index].IsReconnecting <- false
+            wsState.IsReady <- true
+            wsState.IsReconnecting <- false
             if not heartbeat.IsAlive
             then heartbeat.Start()
             for thread in threads do
@@ -255,27 +311,29 @@ type Client(
         if channels.Count > 0
         then
             channels |> Seq.iter (fun (symbol: string) ->
-                let sb : StringBuilder = new StringBuilder()
-                if useOnTrade then sb.Append(",\"trade_data\":\"true\"") |> ignore
-                if useOnQuote then sb.Append(",\"quote_data\":\"true\"") |> ignore
-                if useOnOI then sb.Append(",\"open_interest_data\":\"true\"") |> ignore
-                if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
-                let subscriptionSelection : string = sb.ToString()
-                let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
-                Log.Information("Websocket {0} - Joining channel: {1:l} ({2:l})", index, symbol, subscriptionSelection.TrimStart(','))
-                wsStates.[index].WebSocket.Send(message) )
+                let mutable mask : uint8 = 0uy
+                if useOnTrade then mask <- ClientInline.SetUsesTrade(mask)
+                if useOnQuote then mask <- ClientInline.SetUsesQuote(mask)
+                if useOnRefresh then mask <- ClientInline.SetUsesRefresh(mask)
+                if useOnUA then mask <- ClientInline.SetUsesUA(mask)
+                let message : byte[] = Array.zeroCreate<byte> (symbol.Length + 2)
+                message[0] <- 74uy
+                message[1] <- mask
+                Array.Copy(Encoding.ASCII.GetBytes(symbol), 0, message, 2, symbol.Length)
+                Log.Information("Websocket - Joining channel: {0:l}", symbol)
+                wsState.WebSocket.Send(message, 0, message.Length) )
 
-    let onClose (index : int) (_ : EventArgs) : unit =
+    let onClose (_ : EventArgs) : unit =
         wsLock.EnterUpgradeableReadLock()
         try 
-            if not wsStates.[index].IsReconnecting
+            if not wsState.IsReconnecting
             then
-                Log.Information("Websocket {0} - Closed", index)
+                Log.Information("Websocket - Closed")
                 wsLock.EnterWriteLock()
-                try wsStates.[index].IsReady <- false
+                try wsState.IsReady <- false
                 finally wsLock.ExitWriteLock()
                 if (not ctSource.IsCancellationRequested)
-                then Task.Factory.StartNew(Action(tryReconnect(index))) |> ignore
+                then Task.Factory.StartNew(tryReconnect) |> ignore
         finally wsLock.ExitUpgradeableReadLock()
 
     let (|Closed|Refused|Unavailable|Other|) (input:exn) =
@@ -289,157 +347,132 @@ type Client(
         then Unavailable
         else Other
 
-    let onError (index : int) (args : SuperSocket.ClientEngine.ErrorEventArgs) : unit =
+    let onError (args : SuperSocket.ClientEngine.ErrorEventArgs) : unit =
         let exn = args.Exception
         match exn with
-        | Closed -> Log.Warning("Websocket {0} - Error - Connection failed", index)
-        | Refused -> Log.Warning("Websocket {0} - Error - Connection refused", index)
-        | Unavailable -> Log.Warning("Websocket {0} - Error - Server unavailable", index)
-        | _ -> Log.Error("Websocket {0} - Error - {1}:{2}", index, exn.GetType(), exn.Message)
+        | Closed -> Log.Warning("Websocket - Error - Connection failed")
+        | Refused -> Log.Warning("Websocket - Error - Connection refused")
+        | Unavailable -> Log.Warning("Websocket - Error - Server unavailable")
+        | _ -> Log.Error("Websocket - Error - {0}:{1}", exn.GetType(), exn.Message)
 
-    let onDataReceived (index : int) (args: DataReceivedEventArgs) : unit =
-        Log.Debug("Websocket {0} - Data received", index)
+    let onDataReceived (args: DataReceivedEventArgs) : unit =
+        Log.Debug("Websocket - Data received")
         Interlocked.Increment(&dataMsgCount) |> ignore
         data.Add(args.Data)
 
-    let onMessageReceived (index : int) (args : MessageReceivedEventArgs) : unit =
-        Log.Debug("Websocket {0} - Message received", index)
+    let onMessageReceived (args : MessageReceivedEventArgs) : unit =
+        Log.Debug("Websocket - Message received")
         Interlocked.Increment(&textMsgCount) |> ignore
-        if args.Message = heartbeatResponse then Log.Debug("Heartbeat response received")
-        elif args.Message.Contains(errorResponse)
-        then
-            let replyDoc : JsonDocument = JsonDocument.Parse(args.Message)
-            let errorMessage : string = 
-                replyDoc.RootElement
-                    .GetProperty("payload")
-                    .GetProperty("response")
-                    .GetString()
-            Log.Error("Error received: {0:l}", errorMessage)
+        if (args.Message.Length > 0)
+        then Log.Error("Error received: {0:l}", args.Message)
 
-    let resetWebSocket(index: int, token: string) : unit =
-        Log.Information("Websocket {0} - Resetting", index)
-        let wsUrl : string = getWebSocketUrl(token, index)
+    let resetWebSocket(token: string) : unit =
+        Log.Information("Websocket - Resetting")
+        let wsUrl : string = getWebSocketUrl(token)
         let ws : WebSocket = new WebSocket(wsUrl)
-        ws.Opened.Add(onOpen index)
-        ws.Closed.Add(onClose index)
-        ws.Error.Add(onError index)
-        ws.DataReceived.Add(onDataReceived index)
-        ws.MessageReceived.Add(onMessageReceived index)
+        ws.Opened.Add(onOpen)
+        ws.Closed.Add(onClose)
+        ws.Error.Add(onError)
+        ws.DataReceived.Add(onDataReceived)
+        ws.MessageReceived.Add(onMessageReceived)
         wsLock.EnterWriteLock()
         try
-            wsStates.[index].WebSocket <- ws
-            wsStates.[index].Reset()
+            wsState.WebSocket <- ws
+            wsState.Reset()
         finally wsLock.ExitWriteLock()
         ws.Open()
 
     let initializeWebSockets(token: string) : unit =
         wsLock.EnterWriteLock()
         try
-            let wsCount : int = getWebSocketCount()
-            wsStates <- Array.init wsCount (fun (index:int) ->
-                Log.Information("Websocket {0} - Connecting...", index)
-                let wsUrl : string = getWebSocketUrl(token, index)
-                let ws: WebSocket = new WebSocket(wsUrl)
-                ws.Opened.Add(onOpen index)
-                ws.Closed.Add(onClose index)
-                ws.Error.Add(onError index)
-                ws.DataReceived.Add(onDataReceived index)
-                ws.MessageReceived.Add(onMessageReceived index)
-                new WebSocketState(ws) )
+            Log.Information("Websocket - Connecting...")
+            let wsUrl : string = getWebSocketUrl(token)
+            let ws: WebSocket = new WebSocket(wsUrl)
+            ws.Opened.Add(onOpen)
+            ws.Closed.Add(onClose)
+            ws.Error.Add(onError)
+            ws.DataReceived.Add(onDataReceived)
+            ws.MessageReceived.Add(onMessageReceived)
+            wsState <- new WebSocketState(ws)                
         finally wsLock.ExitWriteLock()
-        wsStates |> Array.iter (fun (wss: WebSocketState) -> wss.WebSocket.Open())
+        wsState.WebSocket.Open()
 
     let join(symbol: string) : unit =
-        if (((symbol = "lobby") || (symbol = "lobby_trades_only")) &&
-            ((config.Provider <> Provider.MANUAL_FIREHOSE) && (config.Provider <> Provider.OPRA_FIREHOSE)))
-        then Log.Warning("Only 'FIREHOSE' providers may join the lobby channel")
-        elif (((symbol <> "lobby") && (symbol <> "lobby_trades_only")) &&
-            ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE)))
-        then Log.Warning("'FIREHOSE' providers may only join the lobby channel")
-        else
-            if channels.Add(symbol)
-            then 
-                let sb : StringBuilder = new StringBuilder()
-                if useOnTrade then sb.Append(",\"trade_data\":\"true\"") |> ignore
-                if useOnQuote then sb.Append(",\"quote_data\":\"true\"") |> ignore
-                if useOnOI then sb.Append(",\"open_interest_data\":\"true\"") |> ignore
-                if useOnUA then sb.Append(",\"unusual_activity_data\":\"true\"") |> ignore
-                let subscriptionSelection : string = sb.ToString()
-                let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_join\"" + subscriptionSelection + ",\"payload\":{},\"ref\":null}"
-                wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
-                    Log.Information("Websocket {0} - Joining channel: {1:l} ({2:l})", index, symbol, subscriptionSelection.TrimStart(','))
-                    try wss.WebSocket.Send(message)
-                    with _ -> channels.Remove(symbol) |> ignore )
+        let translatedSymbol : string = Config.TranslateContract(symbol)
+        if channels.Add(translatedSymbol)
+        then
+            let mutable mask : uint8 = 0uy
+            if useOnTrade then mask <- ClientInline.SetUsesTrade(mask)
+            if useOnQuote then mask <- ClientInline.SetUsesQuote(mask)
+            if useOnRefresh then mask <- ClientInline.SetUsesRefresh(mask)
+            if useOnUA then mask <- ClientInline.SetUsesUA(mask)
+            let message : byte[] = Array.zeroCreate<byte> (translatedSymbol.Length + 2)
+            message[0] <- 74uy
+            message[1] <- mask
+            Array.Copy(Encoding.ASCII.GetBytes(translatedSymbol), 0, message, 2, translatedSymbol.Length)
+            Log.Information("Websocket - Joining channel: {0:l}", translatedSymbol)
+            wsState.WebSocket.Send(message, 0, message.Length)
 
     let leave(symbol: string) : unit =
-        if channels.Remove(symbol)
-        then 
-            let message : string = "{\"topic\":\"options:" + symbol + "\",\"event\":\"phx_leave\",\"payload\":{},\"ref\":null}"
-            wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
-                Log.Information("Websocket {0} - Leaving channel: {1:l}", index, symbol)
-                try wss.WebSocket.Send(message)
-                with _ -> () )
+        let translatedSymbol : string = Config.TranslateContract(symbol)
+        if channels.Remove(translatedSymbol)
+        then
+            let message : byte[] = Array.zeroCreate<byte> (translatedSymbol.Length + 2)
+            message[0] <- 76uy
+            Array.Copy(Encoding.ASCII.GetBytes(translatedSymbol), 0, message, 2, translatedSymbol.Length)
+            Log.Information("Websocket - Leaving channel: {0:l}", translatedSymbol)
+            wsState.WebSocket.Send(message, 0, message.Length)
 
     do
+        Log.Information("useOnTrade: {0}, useOnQuote: {1}, useOnRefresh: {2}, useOnUA: {3}", useOnTrade, useOnQuote, useOnRefresh, useOnUA)
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
-        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv2.0")
-        tryReconnect <- fun (index:int) () ->
+        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv3.0")
+        tryReconnect <- fun () ->
             let reconnectFn () : bool =
-                Log.Information("Websocket {0} - Reconnecting...", index)
-                if wsStates.[index].IsReady then true
+                Log.Information("Websocket - Reconnecting...")
+                if wsState.IsReady then true
                 else
                     wsLock.EnterWriteLock()
-                    try wsStates.[index].IsReconnecting <- true
+                    try wsState.IsReconnecting <- true
                     finally wsLock.ExitWriteLock()
-                    if (DateTime.Now - TimeSpan.FromDays(5.0)) > (wsStates.[index].LastReset)
+                    if (DateTime.Now - TimeSpan.FromDays(5.0)) > (wsState.LastReset)
                     then
                         let _token : string = getToken()
-                        resetWebSocket(index, _token)
+                        resetWebSocket(_token)
                     else
                         try
-                            wsStates.[index].WebSocket.Open()
+                            wsState.WebSocket.Open()
                         with _ -> ()
                     false
-            doBackoff(reconnectFn)
+            ClientInline.DoBackoff(reconnectFn)
         let _token : string = getToken()
         initializeWebSockets(_token)
 
     member _.Join() : unit =
-        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
-        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
-        else
-            while not(allReady()) do Thread.Sleep(1000)
-            let symbolsToAdd : HashSet<string> = new HashSet<string>(config.Symbols)
-            symbolsToAdd.ExceptWith(channels)
-            for symbol in symbolsToAdd do join(symbol)
+        while not(allReady()) do Thread.Sleep(1000)
+        let symbolsToAdd : HashSet<string> = new HashSet<string>(config.Symbols)
+        symbolsToAdd.ExceptWith(channels)
+        for symbol in symbolsToAdd do join(symbol)
 
     member _.Join(symbol: string) : unit =
-        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
-        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
-        else
-            if not (String.IsNullOrWhiteSpace(symbol))
-            then
-                while not(allReady()) do Thread.Sleep(1000)
-                if not (channels.Contains(symbol))
-                then join(symbol)
+        if not (String.IsNullOrWhiteSpace(symbol))
+        then
+            while not(allReady()) do Thread.Sleep(1000)
+            if not (channels.Contains(symbol))
+            then join(symbol)
 
     member _.Join(symbols: string[]) : unit =
-        if ((config.Provider = Provider.MANUAL_FIREHOSE) || (config.Provider = Provider.OPRA_FIREHOSE))
-        then Log.Warning("'FIREHOSE' providers must join the lobby channel. Use the function 'JoinLobby' instead.")
-        else
-            while not(allReady()) do Thread.Sleep(1000)
-            let symbolsToAdd : HashSet<string> = new HashSet<string>(symbols)
-            symbolsToAdd.ExceptWith(channels)
-            for symbol in symbolsToAdd do join(symbol)
+        while not(allReady()) do Thread.Sleep(1000)
+        let symbolsToAdd : HashSet<string> = new HashSet<string>(symbols)
+        symbolsToAdd.ExceptWith(channels)
+        for symbol in symbolsToAdd do join(symbol)
 
     member _.JoinLobby() : unit =
-        if ((config.Provider <> Provider.MANUAL_FIREHOSE) && (config.Provider <> Provider.OPRA_FIREHOSE))
-        then Log.Warning("Only 'FIREHOSE' providers may join the lobby channel")
-        elif (channels.Contains("lobby"))
+        if (channels.Contains("$FIREHOSE"))
         then Log.Warning("This client has already joined the lobby channel")
         else
             while not (allReady()) do Thread.Sleep(1000)
-            join("lobby")
+            join("$FIREHOSE")
 
     member _.Leave() : unit =
         for channel in channels do leave(channel)
@@ -454,25 +487,22 @@ type Client(
         for channel in matchingChannels do leave(channel)
 
     member _.LeaveLobby() : unit =
-        if (channels.Contains("lobby"))
-        then leave("lobby")
+        if (channels.Contains("$FIREHOSE"))
+        then leave("$FIREHOSE")
 
     member _.Stop() : unit =
         for channel in channels do leave(channel)
         Thread.Sleep(1000)
         wsLock.EnterWriteLock()
-        try wsStates |> Array.iter (fun (wss:WebSocketState) -> wss.IsReady <- false)
+        try wsState.IsReady <- false
         finally wsLock.ExitWriteLock()
         ctSource.Cancel ()
-        wsStates |> Array.iteri (fun (index:int) (wss:WebSocketState) ->
-            Log.Information("Websocket {0} - Closing...", index);
-            wss.WebSocket.Close())
+        Log.Information("Websocket - Closing...");
+        wsState.WebSocket.Close()
         heartbeat.Join()
         for thread in threads do thread.Join()
         Log.Information("Stopped")
 
-    member _.GetStats() : (int64 * int64 * int) = (Interlocked.Read(&dataMsgCount), Interlocked.Read(&textMsgCount), data.Count)
+    member _.GetStats() : (uint64 * uint64 * int) = (Interlocked.Read(&dataMsgCount), Interlocked.Read(&textMsgCount), data.Count)
 
     static member Log(messageTemplate:string, [<ParamArray>] propertyValues:obj[]) = Log.Information(messageTemplate, propertyValues)
-
-

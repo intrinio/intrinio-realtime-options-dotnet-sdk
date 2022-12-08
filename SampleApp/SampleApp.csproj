@@ -10,4 +10,8 @@
     <ProjectReference Include="..\IntrinioRealtimeOptions\IntrinioRealtimeOptions.fsproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="runtimeconfig.template.json" />
+  </ItemGroup>
+
 </Project>
