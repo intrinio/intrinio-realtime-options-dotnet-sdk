@@ -458,8 +458,7 @@ type Client(
         if not (String.IsNullOrWhiteSpace(symbol))
         then
             while not(allReady()) do Thread.Sleep(1000)
-            if not (channels.Contains(symbol))
-            then join(symbol)
+            join(symbol)
 
     member _.Join(symbols: string[]) : unit =
         while not(allReady()) do Thread.Sleep(1000)
@@ -479,7 +478,7 @@ type Client(
 
     member _.Leave(symbol: string) : unit =
         if not (String.IsNullOrWhiteSpace(symbol))
-        then if channels.Contains(symbol) then leave(symbol)
+        then leave(symbol)
 
     member _.Leave(symbols: string[]) : unit =
         let matchingChannels : HashSet<string> = new HashSet<string>(symbols)
