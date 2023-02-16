@@ -426,7 +426,7 @@ type Client(
     do
         Log.Information("useOnTrade: {0}, useOnQuote: {1}, useOnRefresh: {2}, useOnUA: {3}", useOnTrade, useOnQuote, useOnRefresh, useOnUA)
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
-        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv3.1")
+        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv3.2")
         tryReconnect <- fun () ->
             let reconnectFn () : bool =
                 Log.Information("Websocket - Reconnecting...")
