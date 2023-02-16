@@ -362,8 +362,67 @@ type TradeCandleStick =
 
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
     
+    override this.Equals(other: Object) : bool =
+        ((not (Object.ReferenceEquals(other, null))) && Object.ReferenceEquals(this, other))
+        || (
+            (not (Object.ReferenceEquals(other, null)))
+            && (not (Object.ReferenceEquals(this, other)))
+            && (other :? TradeCandleStick)
+            && (this.Contract.Equals((other :?> TradeCandleStick).Contract))
+            && (this.Interval.Equals((other :?> TradeCandleStick).Interval))
+            && (this.OpenTimestamp.Equals((other :?> TradeCandleStick).OpenTimestamp))
+           )
+    
     override this.GetHashCode() : int =
         this.Contract.GetHashCode() ^^^ this.Interval.GetHashCode() ^^^ this.OpenTimestamp.GetHashCode()
+        
+    interface IEquatable<TradeCandleStick> with
+        member this.Equals(other: TradeCandleStick) : bool =
+            ((not (Object.ReferenceEquals(other, null))) && Object.ReferenceEquals(this, other))
+            || (
+                (not (Object.ReferenceEquals(other, null)))
+                && (not (Object.ReferenceEquals(this, other)))
+                && (this.Contract.Equals(other.Contract))
+                && (this.Interval.Equals(other.Interval))
+                && (this.OpenTimestamp.Equals(other.OpenTimestamp))
+               )
+            
+    interface IComparable with
+        member this.CompareTo(other: Object) : int =
+            match this.Equals(other) with
+            | true -> 0
+            | false ->
+                match Object.ReferenceEquals(other, null) with
+                | true -> 1
+                | false ->
+                    match (other :? TradeCandleStick) with
+                    | false -> -1
+                    | true -> 
+                        match this.Contract.CompareTo((other :?> TradeCandleStick).Contract) with
+                        | x when x < 0 -> -1
+                        | x when x > 0 -> 1
+                        | 0 ->
+                            match this.Interval.CompareTo((other :?> TradeCandleStick).Interval) with
+                            | x when x < 0 -> -1
+                            | x when x > 0 -> 1
+                            | 0 -> this.OpenTimestamp.CompareTo((other :?> TradeCandleStick).OpenTimestamp)
+                    
+    interface IComparable<TradeCandleStick> with
+        member this.CompareTo(other: TradeCandleStick) : int =
+            match this.Equals(other) with
+            | true -> 0
+            | false ->
+                match Object.ReferenceEquals(other, null) with
+                | true -> 1
+                | false ->
+                    match this.Contract.CompareTo(other.Contract) with
+                    | x when x < 0 -> -1
+                    | x when x > 0 -> 1
+                    | 0 ->
+                        match this.Interval.CompareTo(other.Interval) with
+                        | x when x < 0 -> -1
+                        | x when x > 0 -> 1
+                        | 0 -> this.OpenTimestamp.CompareTo(other.OpenTimestamp)
 
     override this.ToString() : string =
         sprintf "TradeCandleStick (Contract: %s, Volume: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s, AveragePrice: %s, Change: %s)"
@@ -483,8 +542,77 @@ type QuoteCandleStick =
 
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
     
+    override this.Equals(other: Object) : bool =
+        ((not (Object.ReferenceEquals(other, null))) && Object.ReferenceEquals(this, other))
+        || (
+            (not (Object.ReferenceEquals(other, null)))
+            && (not (Object.ReferenceEquals(this, other)))
+            && (other :? QuoteCandleStick)
+            && (this.Contract.Equals((other :?> QuoteCandleStick).Contract))
+            && (this.Interval.Equals((other :?> QuoteCandleStick).Interval))
+            && (this.QuoteType.Equals((other :?> QuoteCandleStick).QuoteType))
+            && (this.OpenTimestamp.Equals((other :?> QuoteCandleStick).OpenTimestamp))            
+           )
+    
     override this.GetHashCode() : int =
         this.Contract.GetHashCode() ^^^ this.Interval.GetHashCode() ^^^ this.OpenTimestamp.GetHashCode() ^^^ this.QuoteType.GetHashCode()
+        
+    interface IEquatable<QuoteCandleStick> with
+        member this.Equals(other: QuoteCandleStick) : bool =
+            ((not (Object.ReferenceEquals(other, null))) && Object.ReferenceEquals(this, other))
+            || (
+                (not (Object.ReferenceEquals(other, null)))
+                && (not (Object.ReferenceEquals(this, other)))
+                && (this.Contract.Equals(other.Contract))
+                && (this.Interval.Equals(other.Interval))
+                && (this.QuoteType.Equals(other.QuoteType))
+                && (this.OpenTimestamp.Equals(other.OpenTimestamp))
+               )
+            
+    interface IComparable with
+        member this.CompareTo(other: Object) : int =
+            match this.Equals(other) with
+            | true -> 0
+            | false ->
+                match Object.ReferenceEquals(other, null) with
+                | true -> 1
+                | false ->
+                    match (other :? QuoteCandleStick) with
+                    | false -> -1
+                    | true -> 
+                        match this.Contract.CompareTo((other :?> QuoteCandleStick).Contract) with
+                        | x when x < 0 -> -1
+                        | x when x > 0 -> 1
+                        | 0 ->
+                            match this.Interval.CompareTo((other :?> QuoteCandleStick).Interval) with
+                            | x when x < 0 -> -1
+                            | x when x > 0 -> 1
+                            | 0 ->
+                                match this.QuoteType.CompareTo((other :?> QuoteCandleStick).QuoteType) with
+                                | x when x < 0 -> -1
+                                | x when x > 0 -> 1
+                                | 0 -> this.OpenTimestamp.CompareTo((other :?> QuoteCandleStick).OpenTimestamp)
+                    
+    interface IComparable<QuoteCandleStick> with
+        member this.CompareTo(other: QuoteCandleStick) : int =
+            match this.Equals(other) with
+            | true -> 0
+            | false ->
+                match Object.ReferenceEquals(other, null) with
+                | true -> 1
+                | false ->
+                    match this.Contract.CompareTo(other.Contract) with
+                    | x when x < 0 -> -1
+                    | x when x > 0 -> 1
+                    | 0 ->
+                        match this.Interval.CompareTo(other.Interval) with
+                        | x when x < 0 -> -1
+                        | x when x > 0 -> 1
+                        | 0 ->
+                            match this.QuoteType.CompareTo(other.QuoteType) with
+                            | x when x < 0 -> -1
+                            | x when x > 0 -> 1
+                            | 0 -> this.OpenTimestamp.CompareTo(other.OpenTimestamp)
 
     override this.ToString() : string =
         sprintf "QuoteCandleStick (Contract: %s, QuoteType: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s, Change: %s)"
