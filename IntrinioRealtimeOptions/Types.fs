@@ -1,4 +1,4 @@
-namespace Intrinio
+namespace Intrinio.Realtime.Options
 
 open System
 open System.Globalization
@@ -35,8 +35,8 @@ module private TypesInline =
     let inline internal ScaleInt32Price (price: int, priceType: uint8) : double =
         (double price) / priceTypeDivisorTable[int priceType]
         
-    let inline internal ScaleTimestamp (timestamp : UInt64) : double =
-        (double timestamp) / 1_000_000_000.0
+    let inline internal ScaleTimestampToSeconds (nanoseconds : UInt64) : double =
+        (double nanoseconds) / 1_000_000_000.0
         
 type QuoteType =
     | Ask = 0
@@ -78,7 +78,7 @@ type Quote internal
     member _.BidPrice with get() =
         if (bPrice = Int32.MaxValue) || (bPrice = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(bPrice, pt)
     member _.BidSize with get() : uint32 = bSize
-    member _.Timestamp with get() : float = TypesInline.ScaleTimestamp(ts)
+    member _.Timestamp with get() : float = TypesInline.ScaleTimestampToSeconds(ts)
 
     member this.GetStrikePrice() : float32 =
         let whole : uint16 = (uint16 this.Contract.[13] - uint16 '0') * 10_000us + (uint16 this.Contract.[14] - uint16 '0') * 1000us + (uint16 this.Contract.[15] - uint16 '0') * 100us + (uint16 this.Contract.[16] - uint16 '0') * 10us + (uint16 this.Contract.[17] - uint16 '0')
@@ -101,6 +101,14 @@ type Quote internal
             (this.BidPrice.ToString("f3"))
             (this.BidSize.ToString())
             (this.Timestamp.ToString("f6"))
+            
+    static member CreateUnitTestObject(contract : string, askPrice : float, askSize : uint32, bidPrice : float, bidSize : uint32, nanoSecondsSinceUnixEpoch : uint64) : Quote =
+        let priceType : uint8 = (uint8)4
+        let unscaledAskPrice : int32 = System.Convert.ToInt32(askPrice * 10000.0)
+        let unscaledBidPrice : int32 = System.Convert.ToInt32(bidPrice * 10000.0)
+        let ts : uint64 = nanoSecondsSinceUnixEpoch;
+        let quote = new Quote(contract, priceType, unscaledAskPrice, askSize, unscaledBidPrice, bidSize, ts)        
+        quote
 
 /// <summary>
 /// A 'Trade' is a unit of data representing an individual market trade event.
@@ -128,7 +136,7 @@ type Trade internal
     member _.Price with get() : float =
         if (p = Int32.MaxValue) || (p = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(p, pt)
     member _.Size with get() : uint32 = s
-    member _.Timestamp with get() : float = TypesInline.ScaleTimestamp(ts)
+    member _.Timestamp with get() : float = TypesInline.ScaleTimestampToSeconds(ts)
     member _.TotalVolume with get() : uint64 = tv
     member _.AskPriceAtExecution with get() : float =
         if (ape = Int32.MaxValue) || (ape = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(ape, pt)
@@ -160,6 +168,16 @@ type Trade internal
             (this.AskPriceAtExecution.ToString("f3"))
             (this.BidPriceAtExecution.ToString("f3"))
             (this.UnderlyingPriceAtExecution.ToString("f3"))
+            
+    static member CreateUnitTestObject(contract : string, price : float, size : uint32, nanoSecondsSinceUnixEpoch : uint64, totalVolume : uint64, askPriceAtExecution : float, bidPriceAtExecution : float, underlyingPriceAtExecution : float) : Trade =
+        let priceType : uint8 = (uint8)4        
+        let unscaledPrice : int32 = System.Convert.ToInt32(price * 10000.0)
+        let ts : uint64 = nanoSecondsSinceUnixEpoch;
+        let unscaledAskPriceAtExecution = System.Convert.ToInt32(askPriceAtExecution * 10000.0)
+        let unscaledBidPriceAtExecution = System.Convert.ToInt32(bidPriceAtExecution * 10000.0)
+        let unscaledUnderlyingPriceAtExecution = System.Convert.ToInt32(underlyingPriceAtExecution * 10000.0)
+        let trade = new Trade(contract, priceType, priceType, unscaledPrice, size, ts, totalVolume, unscaledAskPriceAtExecution, unscaledBidPriceAtExecution, unscaledUnderlyingPriceAtExecution)
+        trade
 
 /// <summary>
 /// A 'Refresh' is an event that periodically sends updated values for open interest and high/low/open/close.
@@ -210,6 +228,15 @@ type Refresh internal
             (this.ClosePrice.ToString("f3"))
             (this.HighPrice.ToString("f3"))
             (this.LowPrice.ToString("f3"))
+            
+    static member CreateUnitTestObject(contract : string, openInterest : uint32, openPrice : float, closePrice : float, highPrice : float, lowPrice : float) : Refresh =
+        let priceType : uint8 = (uint8)4        
+        let unscaledOpenPrice : int32 = System.Convert.ToInt32(openPrice * 10000.0)
+        let unscaledClosePrice : int32 = System.Convert.ToInt32(closePrice * 10000.0)
+        let unscaledHighPrice : int32 = System.Convert.ToInt32(highPrice * 10000.0)
+        let unscaledLowPrice : int32 = System.Convert.ToInt32(lowPrice * 10000.0)
+        let refresh = new Refresh(contract, priceType, openInterest, unscaledOpenPrice, unscaledClosePrice, unscaledHighPrice, unscaledLowPrice)
+        refresh
 
 /// <summary>
 /// Unusual activity type.
@@ -269,7 +296,7 @@ type UnusualActivity internal
         if (bpe = Int32.MaxValue) || (bpe = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(bpe, pt)
     member _.UnderlyingPriceAtExecution with get() : float =
         if (upe = Int32.MaxValue) || (upe = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(upe, upt)
-    member _.Timestamp with get() : float = TypesInline.ScaleTimestamp(t)
+    member _.Timestamp with get() : float = TypesInline.ScaleTimestampToSeconds(t)
 
     member this.GetStrikePrice() : float32 =
         let whole : uint16 = (uint16 this.Contract.[13] - uint16 '0') * 10_000us + (uint16 this.Contract.[14] - uint16 '0') * 1000us + (uint16 this.Contract.[15] - uint16 '0') * 100us + (uint16 this.Contract.[16] - uint16 '0') * 10us + (uint16 this.Contract.[17] - uint16 '0')
@@ -296,6 +323,17 @@ type UnusualActivity internal
             (this.BidPriceAtExecution.ToString("f3"))
             (this.UnderlyingPriceAtExecution.ToString("f3"))
             (this.Timestamp.ToString("f6"))
+            
+    static member CreateUnitTestObject(contract : string, unusualActivityType : UAType, sentimentType : UASentiment, totalValue : float, totalSize : uint32, averagePrice : float, askPriceAtExecution : float, bidPriceAtExecution : float, underlyingPriceAtExecution : float, nanoSecondsSinceUnixEpoch : uint64) : UnusualActivity =
+        let priceType : uint8 = (uint8)4
+        let unscaledTotalValue : uint64 = System.Convert.ToUInt64(totalValue * 10000.0)
+        let unscaledAveragePrice : int32 = System.Convert.ToInt32(averagePrice * 10000.0)
+        let unscaledAskPriceAtExecution = System.Convert.ToInt32(askPriceAtExecution * 10000.0)
+        let unscaledBidPriceAtExecution = System.Convert.ToInt32(bidPriceAtExecution * 10000.0)
+        let unscaledUnderlyingPriceAtExecution = System.Convert.ToInt32(underlyingPriceAtExecution * 10000.0)        
+        let ts : uint64 = nanoSecondsSinceUnixEpoch; 
+        let ua = new UnusualActivity(contract, unusualActivityType, sentimentType, priceType, priceType, unscaledTotalValue, totalSize, unscaledAveragePrice, unscaledAskPriceAtExecution, unscaledBidPriceAtExecution, unscaledUnderlyingPriceAtExecution, ts)
+        ua
             
 type TradeCandleStick =
     val Contract: string

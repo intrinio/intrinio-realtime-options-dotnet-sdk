@@ -1,4 +1,4 @@
-﻿namespace Intrinio
+﻿namespace Intrinio.Realtime.Options
 
 open Intrinio
 open Serilog
@@ -12,7 +12,7 @@ open System.Threading
 open System.Threading.Tasks
 open System.Net.Sockets
 open WebSocket4Net
-open Intrinio.Config
+open Intrinio.Realtime.Options.Config
 open FSharp.NativeInterop
 open System.Runtime.CompilerServices
 
@@ -426,7 +426,7 @@ type Client(
     do
         Log.Information("useOnTrade: {0}, useOnQuote: {1}, useOnRefresh: {2}, useOnUA: {3}", useOnTrade, useOnQuote, useOnRefresh, useOnUA)
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
-        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv3.2")
+        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv4.0")
         tryReconnect <- fun () ->
             let reconnectFn () : bool =
                 Log.Information("Websocket - Reconnecting...")
