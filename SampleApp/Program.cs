@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Threading;
-using Intrinio;
-
+using Intrinio.Realtime.Options;
 
 namespace SampleApp
 {
