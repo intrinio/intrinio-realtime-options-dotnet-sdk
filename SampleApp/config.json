@@ -1,0 +1,19 @@
+{
+	"Config": {
+		"ApiKey": "", //Your Intrinio API key.
+		"Provider": "OPRA",
+		"Symbols": [ "GOOG__210917C01040000", "MSFT__210917C00180000", "AAPL__210917C00130000", "SPY" ], //This is a list of individual contracts (or option chains) to subscribe to.
+		"NumThreads": 8 //The number of threads to use for processing events.
+	},
+	"Serilog": {
+		"Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],
+		"MinimumLevel": {
+			"Default": "Information",
+			"Override": {
+				"Microsoft": "Warning",
+				"System": "Warning"
+			}
+		},
+		"WriteTo": []
+	}
+}
