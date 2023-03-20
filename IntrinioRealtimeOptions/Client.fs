@@ -159,9 +159,9 @@ type Client(
     [<Optional; DefaultParameterValue(null:Action<Trade>)>] onTrade: Action<Trade>,
     [<Optional; DefaultParameterValue(null:Action<Quote>)>] onQuote : Action<Quote>,
     [<Optional; DefaultParameterValue(null:Action<Refresh>)>] onRefresh: Action<Refresh>,
-    [<Optional; DefaultParameterValue(null:Action<UnusualActivity>)>] onUnusualActivity: Action<UnusualActivity>) =
+    [<Optional; DefaultParameterValue(null:Action<UnusualActivity>)>] onUnusualActivity: Action<UnusualActivity>,
+    config : Config.Config) =
     
-    let config = LoadConfig()
     let tLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let wsLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let mutable token : (string * DateTime) = (null, DateTime.Now)
@@ -424,6 +424,7 @@ type Client(
             wsState.WebSocket.Send(message, 0, message.Length)
 
     do
+        config.Validate()
         Log.Information("useOnTrade: {0}, useOnQuote: {1}, useOnRefresh: {2}, useOnUA: {3}", useOnTrade, useOnQuote, useOnRefresh, useOnUA)
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
         httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv4.0")
@@ -447,7 +448,13 @@ type Client(
             ClientInline.DoBackoff(reconnectFn)
         let _token : string = getToken()
         initializeWebSockets(_token)
-
+        
+    new ([<Optional; DefaultParameterValue(null:Action<Trade>)>] onTrade: Action<Trade>,
+         [<Optional; DefaultParameterValue(null:Action<Quote>)>] onQuote : Action<Quote>,
+         [<Optional; DefaultParameterValue(null:Action<Refresh>)>] onRefresh: Action<Refresh>,
+         [<Optional; DefaultParameterValue(null:Action<UnusualActivity>)>] onUnusualActivity: Action<UnusualActivity>) =
+        Client(onTrade, onQuote, onRefresh, onUnusualActivity, Config.LoadConfig())
+    
     member _.Join() : unit =
         while not(allReady()) do Thread.Sleep(1000)
         let symbolsToAdd : HashSet<string> = new HashSet<string>(config.Symbols)
