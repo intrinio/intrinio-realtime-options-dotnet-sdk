@@ -1,4 +1,5 @@
 ﻿using System;
+using Serilog;
 using System.Collections;
 using System.Threading;
 using Intrinio.Realtime.Options;
@@ -128,6 +129,16 @@ namespace SampleApp
 			//onQuote += _candleStickClient.OnQuote;
 			//_candleStickClient.Start();
 			
+			// //You can either automatically load the config.json by doing nothing, or you can specify your own config and pass it in.
+			// //If you don't have a config.json, don't forget to also give Serilog a config so it can write to console
+			// Log.Logger = new LoggerConfiguration().WriteTo.Console(restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information).CreateLogger();
+			// Config.Config config = new Config.Config();
+			// config.Provider = Provider.OPRA;
+			// config.ApiKey = "";
+			// config.Symbols = new[] { "AAPL", "MSFT__220408C00315000" };
+			// config.NumThreads = 4;
+			// _client = new Client(onTrade, onQuote, OnRefresh, OnUnusualActivity, config);
+
 			// Register only the callbacks that you want.
 			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
 			_client = new Client(onTrade: onTrade, onQuote: onQuote, onRefresh: OnRefresh, onUnusualActivity: OnUnusualActivity);

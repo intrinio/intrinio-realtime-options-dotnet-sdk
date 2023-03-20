@@ -6,14 +6,7 @@ module Config =
     open Serilog
     open System.IO
     open Microsoft.Extensions.Configuration
-
-    type Config () =
-        member val ApiKey : string = null with get, set
-        member val Provider : Provider = Provider.NONE with get, set
-        member val IPAddress : string = null with get, set
-        member val Symbols: string[] = [||] with get, set
-        member val NumThreads: int = 4 with get, set
-        
+    
     let inline internal TranslateContract(contract: string) : string =
         if ((contract.Length <= 9) || (contract.IndexOf(".")>=9))
         then
@@ -31,6 +24,31 @@ module Config =
                 decimalPrice <- decimalPrice.Substring(0, 2)
             String.Format($"{symbol}_{date}{callPut}{wholePrice}.{decimalPrice}")
 
+    type Config () =
+        let mutable apiKey : string = String.Empty
+        let mutable provider : Provider = Provider.NONE        
+        let mutable ipAddress : string = String.Empty
+        let mutable numThreads : int = 4
+        let mutable symbols : string[] = [||]
+        
+        member this.ApiKey with get () : string = apiKey and set (value : string) = apiKey <- value
+        member this.Provider with get () : Provider = provider and set (value : Provider) = provider <- value
+        member this.IPAddress with get () : string = ipAddress and set (value : string) = ipAddress <- value
+        member this.Symbols with get () : string[] = symbols and set (value : string[]) = symbols <- value
+        member this.NumThreads with get () : int = numThreads and set (value : int) = numThreads <- value
+        
+        member _.Validate() : unit =
+            if String.IsNullOrWhiteSpace(apiKey)
+            then failwith "You must provide a valid API key"
+            if (provider = Provider.NONE)
+            then failwith "You must specify a valid 'provider'"
+            if ((provider = Provider.MANUAL) && (String.IsNullOrWhiteSpace(ipAddress)))
+            then failwith "You must specify an IP address for manual configuration"
+            if (numThreads <= 0)
+            then failwith "You must specify a valid 'NumThreads'"
+            for i = 0 to symbols.Length-1 do
+                symbols[i] <- TranslateContract(symbols[i])
+    
     let LoadConfig() =
         Log.Information("Loading application configuration")
         let _config = ConfigurationBuilder().SetBasePath(Directory.GetCurrentDirectory()).AddJsonFile("config.json").Build()
@@ -38,12 +56,5 @@ module Config =
         let mutable config = new Config()
         for (KeyValue(key,value)) in _config.AsEnumerable() do Log.Debug("Key: {0}, Value:{1}", key, value)
         _config.Bind("Config", config)
-        if String.IsNullOrWhiteSpace(config.ApiKey)
-        then failwith "You must provide a valid API key"
-        if (config.Provider = Provider.NONE)
-        then failwith "You must specify a valid 'provider'"
-        if (config.Provider = Provider.MANUAL) && (String.IsNullOrWhiteSpace(config.IPAddress))
-        then failwith "You must specify an IP address for manual configuration"
-        for i = 0 to config.Symbols.Length-1 do
-            config.Symbols[i] <- TranslateContract(config.Symbols[i])
+        config.Validate()
         config
