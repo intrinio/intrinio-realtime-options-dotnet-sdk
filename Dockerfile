@@ -10,5 +10,3 @@ RUN dotnet build SampleApp.csproj
  
 CMD dotnet run SampleApp.csproj
 
-# CMD /bin/bash
-

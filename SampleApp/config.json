@@ -14,6 +14,8 @@
 				"System": "Warning"
 			}
 		},
-		"WriteTo": []
+		"WriteTo": [
+			{ "Name": "Console" }
+		]
 	}
 }
