@@ -1,6 +1,5 @@
 ﻿namespace Intrinio.Realtime.Options
 
-open Intrinio
 open Serilog
 open System
 open System.Runtime.InteropServices
@@ -12,8 +11,8 @@ open System.Threading
 open System.Threading.Tasks
 open System.Net.Sockets
 open WebSocket4Net
-open Intrinio.Realtime.Options.Config
 open FSharp.NativeInterop
+open FSharp.Core.LanguagePrimitives
 open System.Runtime.CompilerServices
 
 module private ClientInline =
@@ -73,12 +72,14 @@ module private ClientInline =
     let inline internal ParseTrade (bytes: ReadOnlySpan<byte>) : Trade =
         Trade
             (FormatContract(bytes.Slice(1, int bytes[0])),
+             EnumOfValue<char,Exchange>(char(bytes[65])),
              bytes[23],
              bytes[24],
              BitConverter.ToInt32(bytes.Slice(25, 4)),
              BitConverter.ToUInt32(bytes.Slice(29, 4)),
              BitConverter.ToUInt64(bytes.Slice(33, 8)),
              BitConverter.ToUInt64(bytes.Slice(41, 8)),
+             struct(bytes[61], bytes[62], bytes[63], bytes[64]),
              BitConverter.ToInt32(bytes.Slice(49, 4)),
              BitConverter.ToInt32(bytes.Slice(53, 4)),
              BitConverter.ToInt32(bytes.Slice(57, 4)))
@@ -224,20 +225,6 @@ type Client(
             if useOnRefresh then onRefresh.Invoke(refresh)
         else Log.Warning("Invalid MessageType: {0}", msgType)
 
-    let heartbeatFn () =
-        let ct = ctSource.Token
-        Log.Debug("Starting heartbeat")
-        while not(ct.IsCancellationRequested) do
-            Thread.Sleep(20000) //send heartbeat every 20 sec
-            Log.Debug("Sending heartbeat")
-            wsLock.EnterReadLock()
-            try
-                if not(ct.IsCancellationRequested) && wsState.IsReady
-                then wsState.WebSocket.Send("")
-            finally wsLock.ExitReadLock()
-
-    let heartbeat : Thread = new Thread(new ThreadStart(heartbeatFn))
-
     let threadFn () : unit =
         let ct = ctSource.Token
         let mutable datum : byte[] = Array.empty<byte>
@@ -253,7 +240,7 @@ type Client(
                         parseSocketMessage(datum, &startIndex)
             with
                 | :? OperationCanceledException -> ()
-                | :? Exception as e -> Log.Error("Parse data failure: {0}", e.Message)
+                | exn -> Log.Error("Parse data failure: {0}", exn.Message)
 
     let threads : Thread[] = Array.init config.NumThreads (fun _ -> new Thread(new ThreadStart(threadFn)))
 
@@ -302,8 +289,6 @@ type Client(
         try
             wsState.IsReady <- true
             wsState.IsReconnecting <- false
-            if not heartbeat.IsAlive
-            then heartbeat.Start()
             for thread in threads do
                 if not thread.IsAlive
                 then thread.Start()
@@ -427,7 +412,7 @@ type Client(
         config.Validate()
         Log.Information("useOnTrade: {0}, useOnQuote: {1}, useOnRefresh: {2}, useOnUA: {3}", useOnTrade, useOnQuote, useOnRefresh, useOnUA)
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
-        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv4.1")
+        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv4.2")
         tryReconnect <- fun () ->
             let reconnectFn () : bool =
                 Log.Information("Websocket - Reconnecting...")
@@ -505,7 +490,6 @@ type Client(
         ctSource.Cancel ()
         Log.Information("Websocket - Closing...");
         wsState.WebSocket.Close()
-        heartbeat.Join()
         for thread in threads do thread.Join()
         Log.Information("Stopped")
 
