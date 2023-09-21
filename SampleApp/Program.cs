@@ -1,6 +1,4 @@
-﻿using System;
-using Serilog;
-using System.Collections;
+using System;
 using System.Threading;
 using Intrinio.Realtime.Options;
 

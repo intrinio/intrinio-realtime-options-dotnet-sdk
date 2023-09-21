@@ -110,10 +110,30 @@ type Quote internal
         let quote = new Quote(contract, priceType, unscaledAskPrice, askSize, unscaledBidPrice, bidSize, ts)        
         quote
 
+type Exchange =
+    | NYSE_AMERICAN = 'A'
+    | BOSTON = 'B'
+    | CBOE = 'C'
+    | MIAMI_EMERALD = 'D'
+    | BATS_EDGX = 'E'
+    | ISE_GEMINI = 'H'
+    | ISE = 'I'
+    | MERCURY = 'J'
+    | MIAMI = 'M'
+    | MIAMI_PEARL = 'O'
+    | NYSE_ARCA = 'P'
+    | NASDAQ = 'Q'
+    | NASDAQ_BX = 'T'
+    | MEMX = 'U'
+    | CBOE_C2 = 'W'
+    | PHLX = 'X'
+    | BATS_BZX = 'Z'
+
 /// <summary>
 /// A 'Trade' is a unit of data representing an individual market trade event.
 /// </summary>
 /// <param name="Symbol">The id of the option contract (e.g. AAPL_210305C350.00).</param>
+/// <param name="Exchange">The specific exchange through which the trade occurred.</param>
 /// <param name="Price">The dollar price of the last trade.</param>
 /// <param name="Size">The number of contacts for the trade.</param>
 /// <param name="Timestamp">The time that the trade was executed (a unix timestamp representing the number of seconds (or better) since the unix epoch).</param>
@@ -123,21 +143,25 @@ type Quote internal
 /// <param name="UnderlyingPriceAtExecution">The dollar price of the underlying security at the time of execution.</param>
 type Trade internal
     (cont: string,
+     ex: Exchange,
      pt: uint8,
      upt: uint8,
      p: int32,
      s: uint32,
      ts: uint64,
      tv: uint64,
+     qual: struct(byte*byte*byte*byte),
      ape: int32,
      bpe: int32,
      upe: int32) =
     member _.Contract with get() : string = cont
+    member _.Exhange with get() : Exchange = ex
     member _.Price with get() : float =
         if (p = Int32.MaxValue) || (p = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(p, pt)
     member _.Size with get() : uint32 = s
     member _.Timestamp with get() : float = TypesInline.ScaleTimestampToSeconds(ts)
     member _.TotalVolume with get() : uint64 = tv
+    member _.Qualifiers with get() : struct(byte*byte*byte*byte) = qual
     member _.AskPriceAtExecution with get() : float =
         if (ape = Int32.MaxValue) || (ape = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(ape, pt)
     member _.BidPriceAtExecution with get() : float =
@@ -159,24 +183,26 @@ type Trade internal
     member this.GetUnderlyingSymbol() : string = this.Contract.Substring(0, 6).TrimEnd('_')
 
     override this.ToString() : string =
-        sprintf "Trade (Contract: %s, Price: %s, Size: %s, Timestamp: %s, TotalVolume: %s, AskPriceAtExecution: %s, BidPriceAtExecution: %s, UnderlyingPrice: %s)"
+        sprintf "Trade (Contract: %s, Exchange: %s, Price: %s, Size: %s, Timestamp: %s, TotalVolume: %s, Qualifiers: %s, AskPriceAtExecution: %s, BidPriceAtExecution: %s, UnderlyingPrice: %s)"
             this.Contract
+            (this.Exhange.ToString())
             (this.Price.ToString("f3"))
             (this.Size.ToString())
             (this.Timestamp.ToString("f6"))
             (this.TotalVolume.ToString())
+            (this.Qualifiers.ToString())
             (this.AskPriceAtExecution.ToString("f3"))
             (this.BidPriceAtExecution.ToString("f3"))
             (this.UnderlyingPriceAtExecution.ToString("f3"))
             
-    static member CreateUnitTestObject(contract : string, price : float, size : uint32, nanoSecondsSinceUnixEpoch : uint64, totalVolume : uint64, askPriceAtExecution : float, bidPriceAtExecution : float, underlyingPriceAtExecution : float) : Trade =
+    static member CreateUnitTestObject(contract : string, exchange: Exchange, price : float, size : uint32, nanoSecondsSinceUnixEpoch : uint64, totalVolume : uint64, qualifiers : struct(byte*byte*byte*byte), askPriceAtExecution : float, bidPriceAtExecution : float, underlyingPriceAtExecution : float) : Trade =
         let priceType : uint8 = (uint8)4        
         let unscaledPrice : int32 = System.Convert.ToInt32(price * 10000.0)
         let ts : uint64 = nanoSecondsSinceUnixEpoch;
         let unscaledAskPriceAtExecution = System.Convert.ToInt32(askPriceAtExecution * 10000.0)
         let unscaledBidPriceAtExecution = System.Convert.ToInt32(bidPriceAtExecution * 10000.0)
         let unscaledUnderlyingPriceAtExecution = System.Convert.ToInt32(underlyingPriceAtExecution * 10000.0)
-        let trade = new Trade(contract, priceType, priceType, unscaledPrice, size, ts, totalVolume, unscaledAskPriceAtExecution, unscaledBidPriceAtExecution, unscaledUnderlyingPriceAtExecution)
+        let trade = new Trade(contract, exchange, priceType, priceType, unscaledPrice, size, ts, totalVolume, qualifiers, unscaledAskPriceAtExecution, unscaledBidPriceAtExecution, unscaledUnderlyingPriceAtExecution)
         trade
 
 /// <summary>
