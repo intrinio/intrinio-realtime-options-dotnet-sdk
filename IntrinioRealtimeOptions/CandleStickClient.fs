@@ -7,10 +7,6 @@ open System.Runtime.InteropServices
 open System.Collections.Concurrent
 open System.Collections.Generic
 open System.Threading
-open System.Threading.Tasks
-open System.Net.Sockets
-open WebSocket4Net
-open Intrinio.Realtime.Options.Config
 open FSharp.NativeInterop
 open System.Runtime.CompilerServices
 
@@ -21,8 +17,8 @@ module private CandleStickClientInline =
         let p = NativePtr.stackalloc<'a> length |> NativePtr.toVoidPtr
         Span<'a>(p, length)
         
-    let inline internal getCurrentTimestamp() : float =
-        (DateTime.UtcNow - DateTime.UnixEpoch.ToUniversalTime()).TotalSeconds
+    let inline internal getCurrentTimestamp(delay : float) : float =
+        (DateTime.UtcNow - DateTime.UnixEpoch.ToUniversalTime()).TotalSeconds - delay
         
     let inline internal getNearestModInterval(timestamp : float, interval: IntervalType) : float =
         System.Convert.ToDouble(System.Convert.ToUInt64(timestamp) / System.Convert.ToUInt64(int interval)) * System.Convert.ToDouble((int interval))
@@ -55,7 +51,8 @@ type CandleStickClient(
     interval : IntervalType,
     broadcastPartialCandles : bool,
     [<Optional; DefaultParameterValue(null:Func<string, float, float, IntervalType, TradeCandleStick>)>] getHistoricalTradeCandleStick : Func<string, float, float, IntervalType, TradeCandleStick>,
-    [<Optional; DefaultParameterValue(null:Func<string, float, float, QuoteType, IntervalType, QuoteCandleStick>)>] getHistoricalQuoteCandleStick : Func<string, float, float, QuoteType, IntervalType, QuoteCandleStick>) =
+    [<Optional; DefaultParameterValue(null:Func<string, float, float, QuoteType, IntervalType, QuoteCandleStick>)>] getHistoricalQuoteCandleStick : Func<string, float, float, QuoteType, IntervalType, QuoteCandleStick>,
+    sourceDelaySeconds : float) =
     
     let ctSource : CancellationTokenSource = new CancellationTokenSource()
     let useOnTradeCandleStick : bool = not (obj.ReferenceEquals(onTradeCandleStick,null))
@@ -67,6 +64,7 @@ type CandleStickClient(
     let lostAndFoundLock : ReaderWriterLockSlim = new ReaderWriterLockSlim()
     let contracts : Dictionary<string, ContractBucket> = new Dictionary<string, ContractBucket>(initialDictionarySize)
     let lostAndFound : Dictionary<string, ContractBucket> = new Dictionary<string, ContractBucket>(initialDictionarySize)
+    let flushBufferSeconds : float = 30.0 
     
     static let getSlot(key : string, dict : Dictionary<string, ContractBucket>, locker : ReaderWriterLockSlim) : ContractBucket =
         match dict.TryGetValue(key) with
@@ -93,6 +91,26 @@ type CandleStickClient(
                 | (true, _) ->
                     dict.Remove(key) |> ignore
             finally locker.ExitWriteLock()
+            
+    let createNewTradeCandle(trade : Trade, timestamp : float) : TradeCandleStick option =
+        let start : float = CandleStickClientInline.getNearestModInterval(timestamp, interval)
+        let freshCandle : TradeCandleStick option = Some(new TradeCandleStick(trade.Contract, trade.Size, trade.Price, start, (start + System.Convert.ToDouble(int interval)), interval, timestamp))
+        
+        if (useGetHistoricalTradeCandleStick && useOnTradeCandleStick)
+        then
+            try
+                let historical = getHistoricalTradeCandleStick.Invoke(freshCandle.Value.Contract, freshCandle.Value.OpenTimestamp, freshCandle.Value.CloseTimestamp, freshCandle.Value.Interval)
+                match not (obj.ReferenceEquals(historical,null)) with
+                | false ->
+                    freshCandle
+                | true ->
+                    historical.MarkIncomplete()
+                    CandleStickClientInline.mergeTradeCandles(historical, freshCandle.Value)
+            with :? Exception as e ->
+                Log.Error("Error retrieving historical TradeCandleStick: {0}; trade: {1}", e.Message, trade)
+                freshCandle
+        else
+            freshCandle
             
     let addAskToLostAndFound(ask: Quote) : unit =
         let key : string = String.Format("{0}|{1}|{2}", ask.Contract, CandleStickClientInline.getNearestModInterval(ask.Timestamp, interval), interval)
@@ -205,7 +223,7 @@ type CandleStickClient(
                 contractsLock.ExitReadLock()
                 for key in keys do
                     let bucket : ContractBucket = getSlot(key, contracts, contractsLock)
-                    let currentTime : float = CandleStickClientInline.getCurrentTimestamp()
+                    let currentTime : float = CandleStickClientInline.getCurrentTimestamp(sourceDelaySeconds) - flushBufferSeconds
                     bucket.Locker.EnterWriteLock()
                     try
                         if (useOnTradeCandleStick && bucket.TradeCandleStick.IsSome && (bucket.TradeCandleStick.Value.CloseTimestamp < currentTime))

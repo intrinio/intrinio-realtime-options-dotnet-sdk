@@ -489,7 +489,7 @@ type TradeCandleStick =
                         | 0 -> this.OpenTimestamp.CompareTo(other.OpenTimestamp)
 
     override this.ToString() : string =
-        sprintf "TradeCandleStick (Contract: %s, Volume: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s, AveragePrice: %s, Change: %s)"
+        sprintf "TradeCandleStick (Contract: %s, Volume: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s, AveragePrice: %s, Change: %s, Complete: %s)"
             this.Contract
             (this.Volume.ToString())
             (this.High.ToString("f3"))
@@ -500,6 +500,7 @@ type TradeCandleStick =
             (this.CloseTimestamp.ToString("f6"))
             (this.Average.ToString("f3"))
             (this.Change.ToString("f6"))
+            (this.Complete.ToString())
             
     member this.Merge(candle: TradeCandleStick) : unit =
         this.Average <- ((System.Convert.ToDouble(this.Volume) * this.Average) + (System.Convert.ToDouble(candle.Volume) * candle.Average)) / (System.Convert.ToDouble(this.Volume + candle.Volume))
@@ -525,6 +526,9 @@ type TradeCandleStick =
         
     member internal this.MarkComplete() : unit =
         this.Complete <- true
+        
+    member internal this.MarkIncomplete() : unit =
+        this.Complete <- false
 
 type QuoteCandleStick =
     val Contract: string
@@ -679,7 +683,7 @@ type QuoteCandleStick =
                             | 0 -> this.OpenTimestamp.CompareTo(other.OpenTimestamp)
 
     override this.ToString() : string =
-        sprintf "QuoteCandleStick (Contract: %s, QuoteType: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s, Change: %s)"
+        sprintf "QuoteCandleStick (Contract: %s, QuoteType: %s, High: %s, Low: %s, Close: %s, Open: %s, OpenTimestamp: %s, CloseTimestamp: %s, Change: %s, Complete: %s)"
             this.Contract
             (this.QuoteType.ToString())
             (this.High.ToString("f3"))
@@ -689,6 +693,7 @@ type QuoteCandleStick =
             (this.OpenTimestamp.ToString("f6"))
             (this.CloseTimestamp.ToString("f6"))
             (this.Change.ToString("f6"))
+            (this.Complete.ToString())
             
     member this.Merge(candle: QuoteCandleStick) : unit =
         this.High <- if this.High > candle.High then this.High else candle.High
@@ -710,3 +715,53 @@ type QuoteCandleStick =
         
     member internal this.MarkComplete() : unit =
         this.Complete <- true
+        
+    member internal this.MarkIncomplete() : unit =
+        this.Complete <- false
+        
+type ClientStats (
+    socketDataMessages : uint64,
+    socketTextMessages : uint64,
+    queueDepth : int,
+    eventCount : uint64,
+    tradeCount : uint64,
+    quoteCount : uint64,
+    refreshCount : uint64,
+    unusualActivityCount : uint64) =
+    
+    member _.SocketDataMessages() : uint64 =
+        socketDataMessages
+        
+    member _.SocketTextMessages() : uint64 =
+        socketTextMessages
+        
+    member _.QueueDepth() : int =
+        queueDepth
+        
+    member _.EventCount() : uint64 =
+        eventCount
+        
+    member _.TradeCount() : uint64 =
+        tradeCount
+        
+    member _.QuoteCount() : uint64 =
+        quoteCount
+        
+    member _.RefreshCount() : uint64 =
+        refreshCount
+        
+    member _.UnusualActivityCount() : uint64 =
+        unusualActivityCount
+                    
+type public IOptionsWebSocketClient =
+    abstract member Join : unit -> unit
+    abstract member Join : string -> unit
+    abstract member Join : string[] -> unit
+    abstract member JoinLobby : unit -> unit
+    abstract member Leave : unit -> unit
+    abstract member Leave : string -> unit
+    abstract member Leave : string[] -> unit
+    abstract member LeaveLobby : unit -> unit
+    abstract member Stop : unit -> unit
+    abstract member GetStats : unit -> ClientStats
+    abstract member Log : string * [<ParamArray>] propertyValues:obj[] -> unit
