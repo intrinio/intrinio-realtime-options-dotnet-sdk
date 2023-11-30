@@ -861,8 +861,52 @@ type internal Tick(
         bytes;
         
     let getUnusualActivityBytes(unusualActivity : UnusualActivity) : byte[] =
-        raise (NotImplementedException());
-        Array.zeroCreate 0
+        let contractBytes : byte[] = Encoding.ASCII.GetBytes(unusualActivity.Contract);
+        let contractLength : byte = System.Convert.ToByte(contractBytes.Length);
+        let contractLengthInt32 : int = System.Convert.ToInt32 contractLength;
+        let unusualActivityTypeInt32 : int = LanguagePrimitives.EnumToValue unusualActivity.UnusualActivityType;
+        let unusualActivityTypeByte : byte = ((byte) unusualActivityTypeInt32);
+        let sentimentInt32 : int = LanguagePrimitives.EnumToValue unusualActivity.Sentiment;
+        let sentimentByte : byte = ((byte) sentimentInt32);        
+        let totalValueBytes : byte[] = BitConverter.GetBytes(unusualActivity.TotalValue); // 8 byte float
+        let totalSizeBytes : byte[] = BitConverter.GetBytes(unusualActivity.TotalSize); // 4 byte uint32
+        let averagePriceBytes : byte[] = BitConverter.GetBytes(unusualActivity.AveragePrice); // 8 byte float
+        let askPriceAtExecutionBytes : byte[] = BitConverter.GetBytes(unusualActivity.AskPriceAtExecution); // 8 byte float
+        let bidPriceAtExecutionBytes : byte[] = BitConverter.GetBytes(unusualActivity.BidPriceAtExecution); // 8 byte float
+        let underlyingPriceAtExecutionBytes : byte[] = BitConverter.GetBytes(unusualActivity.UnderlyingPriceAtExecution); // 8 byte float
+        let timestampBytes : byte[] = BitConverter.GetBytes(unusualActivity.Timestamp); // 8 byte float
+        
+        // byte 0       | type | byte
+        // byte 1       | messageLength (includes bytes 0 and 1) | byte
+        // byte 2       | contractLength | byte
+        // bytes [3...] | contract | string (ascii)
+        // next byte    | unusualActivityType | char
+        // next byte    | sentiment | char
+        // next 8 bytes | totalValue | float64
+        // next 4 bytes | totalSize | uint32
+        // next 8 bytes | averagePrice | float64
+        // next 8 bytes | askPriceAtExecution | float64
+        // next 8 bytes | bidPriceAtExecution | float64
+        // next 8 bytes | underlyingPriceAtExecution | float64
+        // next 8 bytes | timestamp | float64
+        let messageLength : byte = 57uy + contractLength;
+        
+        let bytes : byte[] = Array.zeroCreate (System.Convert.ToInt32(messageLength));
+        bytes[0] <- System.Convert.ToByte((int)(MessageType.UnusualActivity));
+        bytes[1] <- messageLength;
+        bytes[2] <- contractLength;
+        Array.Copy(contractBytes, 0, bytes, 3, contractLengthInt32);
+        bytes[3 + contractLengthInt32] <- unusualActivityTypeByte
+        bytes[4 + contractLengthInt32] <- sentimentByte;
+        Array.Copy(totalValueBytes, 0, bytes, 5 + contractLengthInt32, totalValueBytes.Length);
+        Array.Copy(totalSizeBytes, 0, bytes, 13 + contractLengthInt32, totalSizeBytes.Length)
+        Array.Copy(averagePriceBytes, 0, bytes, 17 + contractLengthInt32, averagePriceBytes.Length);
+        Array.Copy(askPriceAtExecutionBytes, 0, bytes, 25 + contractLengthInt32, askPriceAtExecutionBytes.Length);
+        Array.Copy(bidPriceAtExecutionBytes, 0, bytes, 33 + contractLengthInt32, bidPriceAtExecutionBytes.Length);
+        Array.Copy(underlyingPriceAtExecutionBytes, 0, bytes, 41 + contractLengthInt32, underlyingPriceAtExecutionBytes.Length);
+        Array.Copy(timestampBytes, 0, bytes, 49 + contractLengthInt32, timestampBytes.Length);        
+        
+        bytes;
         
     member _.TimeReceived() : DateTime = timeReceived
         
