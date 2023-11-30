@@ -827,8 +827,38 @@ type internal Tick(
         bytes;
         
     let getRefreshBytes(refresh : Refresh) : byte[] =
-        raise (NotImplementedException());
-        Array.zeroCreate 0
+        let contractBytes : byte[] = Encoding.ASCII.GetBytes(refresh.Contract);
+        let contractLength : byte = System.Convert.ToByte(contractBytes.Length);
+        let contractLengthInt32 : int = System.Convert.ToInt32 contractLength
+        let openInterestBytes : byte[] = BitConverter.GetBytes(refresh.OpenInterest); // 4 byte uint32
+        let openPriceBytes : byte[] = BitConverter.GetBytes(refresh.OpenPrice); // 8 byte float
+        let closePriceBytes : byte[] = BitConverter.GetBytes(refresh.ClosePrice); // 8 byte float
+        let highPriceBytes : byte[] = BitConverter.GetBytes(refresh.HighPrice); // 8 byte float
+        let lowPriceBytes : byte[] = BitConverter.GetBytes(refresh.LowPrice); // 8 byte float
+        
+        // byte 0       | type | byte
+        // byte 1       | messageLength (includes bytes 0 and 1) | byte
+        // byte 2       | contractLength | byte
+        // bytes [3...] | contract | string (ascii)
+        // next 4 bytes | openInterest | uint32
+        // next 8 bytes | openPrice | float64
+        // next 8 bytes | closePrice | float64
+        // next 8 bytes | highPrice | float64
+        // next 8 bytes | lowPrice | float64
+        let messageLength : byte = 39uy + contractLength;
+        
+        let bytes : byte[] = Array.zeroCreate (System.Convert.ToInt32(messageLength));
+        bytes[0] <- System.Convert.ToByte((int)(MessageType.Refresh));
+        bytes[1] <- messageLength;
+        bytes[2] <- contractLength;
+        Array.Copy(contractBytes, 0, bytes, 3, contractLengthInt32);
+        Array.Copy(openInterestBytes, 0, bytes, 3 + contractLengthInt32, openInterestBytes.Length);
+        Array.Copy(openPriceBytes, 0, bytes, 7 + contractLengthInt32, openPriceBytes.Length);
+        Array.Copy(closePriceBytes, 0, bytes, 15 + contractLengthInt32, closePriceBytes.Length);
+        Array.Copy(highPriceBytes, 0, bytes, 23 + contractLengthInt32, highPriceBytes.Length);
+        Array.Copy(lowPriceBytes, 0, bytes, 31 + contractLengthInt32, lowPriceBytes.Length);
+        
+        bytes;
         
     let getUnusualActivityBytes(unusualActivity : UnusualActivity) : byte[] =
         raise (NotImplementedException());
