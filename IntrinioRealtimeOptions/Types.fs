@@ -2,6 +2,10 @@ namespace Intrinio.Realtime.Options
 
 open System
 open System.Globalization
+open System.Text
+open FSharp.NativeInterop
+open FSharp.Core.LanguagePrimitives
+open System.Runtime.CompilerServices
 
 type Provider =
     | NONE = 0
@@ -9,6 +13,12 @@ type Provider =
     | MANUAL = 2
 
 module private TypesInline =
+    
+    [<SkipLocalsInit>]
+    let inline internal stackalloc<'a when 'a: unmanaged> (length: int): Span<'a> =
+        let p = NativePtr.stackalloc<'a> length |> NativePtr.toVoidPtr
+        Span<'a>(p, length)
+        
     let private priceTypeDivisorTable : double[] =
         [|
             1.0
@@ -41,6 +51,12 @@ module private TypesInline =
 type QuoteType =
     | Ask = 0
     | Bid = 1
+    
+type MessageType =
+    | Trade = 0
+    | Quote = 1    
+    | Refresh = 2
+    | UnusualActivity = 3
     
 type IntervalType =
     | OneMinute = 60
@@ -75,7 +91,7 @@ type Quote internal
     member _.AskPrice with get() : float =
         if (aPrice = Int32.MaxValue) || (aPrice = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(aPrice, pt)
     member _.AskSize with get() : uint32 = aSize
-    member _.BidPrice with get() =
+    member _.BidPrice with get() : float =
         if (bPrice = Int32.MaxValue) || (bPrice = Int32.MinValue) then Double.NaN else TypesInline.ScaleInt32Price(bPrice, pt)
     member _.BidSize with get() : uint32 = bSize
     member _.Timestamp with get() : float = TypesInline.ScaleTimestampToSeconds(ts)
@@ -719,6 +735,148 @@ type QuoteCandleStick =
     member internal this.MarkIncomplete() : unit =
         this.Complete <- false
         
+type internal Tick(
+    timeReceived : DateTime,
+    trade: Option<Trade>,
+    quote : Option<Quote>,
+    refresh : Option<Refresh>,
+    unusualActivity : Option<UnusualActivity>) =
+    
+    let getTradeBytes(trade : Trade) : byte[] =
+        let contractBytes : byte[] = Encoding.ASCII.GetBytes(trade.Contract);
+        let contractLength : byte = System.Convert.ToByte(contractBytes.Length);
+        let contractLengthInt32 : int = System.Convert.ToInt32 contractLength;
+        let exchangeChar : char = LanguagePrimitives.EnumToValue trade.Exhange;
+        let exchangeByte : byte = ((byte) exchangeChar);
+        let priceBytes : byte[] = BitConverter.GetBytes(trade.Price); // 8 byte float
+        let sizeBytes : byte[] = BitConverter.GetBytes(trade.Size); // 4 byte uint32
+        let timestampBytes : byte[] = BitConverter.GetBytes(trade.Timestamp); // 8 byte float
+        let totalVolumeBytes : byte[] = BitConverter.GetBytes(trade.TotalVolume); // 8 byte uint64
+        let struct(qualifiersItem1, qualifiersItem2, qualifiersItem3, qualifiersItem4) = trade.Qualifiers;
+        let askPriceAtExecutionBytes : byte[] = BitConverter.GetBytes(trade.AskPriceAtExecution); // 8 byte float
+        let bidPriceAtExecutionBytes : byte[] = BitConverter.GetBytes(trade.BidPriceAtExecution); // 8 byte float
+        let underlyingPriceAtExecutionBytes : byte[] = BitConverter.GetBytes(trade.UnderlyingPriceAtExecution); // 8 byte float
+        
+        // byte 0       | type | byte
+        // byte 1       | messageLength (includes bytes 0 and 1) | byte
+        // byte 2       | contractLength | byte
+        // bytes [3...] | contract | string (ascii)
+        // next byte    | exchange | char
+        // next 8 bytes | price | float64
+        // next 4 bytes | size | uint32
+        // next 8 bytes | timestamp | float64
+        // next 8 bytes | totalvolume | uint64
+        // next 4 bytes | qualifiers | 4 byte struct tuple
+        // next 8 bytes | askpriceatexecution | float64
+        // next 8 bytes | bidpriceatexecution | float64
+        // next 8 bytes | underlyingpriceatexecution | float64
+        let messageLength : byte = 60uy + contractLength;
+        
+        let bytes : byte[] = Array.zeroCreate (System.Convert.ToInt32(messageLength));
+        bytes[0] <- System.Convert.ToByte((int)(MessageType.Trade));
+        bytes[1] <- messageLength;
+        bytes[2] <- contractLength;
+        Array.Copy(contractBytes, 0, bytes, 3, contractLengthInt32);
+        bytes[3 + contractLengthInt32] <- exchangeByte;
+        Array.Copy(priceBytes, 0, bytes, 4 + contractLengthInt32, priceBytes.Length);
+        Array.Copy(sizeBytes, 0, bytes, 12 + contractLengthInt32, sizeBytes.Length);
+        Array.Copy(timestampBytes, 0, bytes, 16 + contractLengthInt32, timestampBytes.Length);
+        Array.Copy(totalVolumeBytes, 0, bytes, 24 + contractLengthInt32, totalVolumeBytes.Length);
+        bytes[32 + contractLengthInt32] <- qualifiersItem1;
+        bytes[33 + contractLengthInt32] <- qualifiersItem2;
+        bytes[34 + contractLengthInt32] <- qualifiersItem3;
+        bytes[35 + contractLengthInt32] <- qualifiersItem4;
+        Array.Copy(askPriceAtExecutionBytes, 0, bytes, 36 + contractLengthInt32, askPriceAtExecutionBytes.Length);
+        Array.Copy(bidPriceAtExecutionBytes, 0, bytes, 44 + contractLengthInt32, bidPriceAtExecutionBytes.Length);
+        Array.Copy(underlyingPriceAtExecutionBytes, 0, bytes, 52 + contractLengthInt32, underlyingPriceAtExecutionBytes.Length);
+        
+        bytes;
+        
+    let getQuoteBytes(quote : Quote) : byte[] =
+        let contractBytes : byte[] = Encoding.ASCII.GetBytes(quote.Contract);
+        let contractLength : byte = System.Convert.ToByte(contractBytes.Length);
+        let contractLengthInt32 : int = System.Convert.ToInt32 contractLength;
+        let askPriceBytes : byte[] = BitConverter.GetBytes(quote.AskPrice); // 8 byte float
+        let askSizeBytes : byte[] = BitConverter.GetBytes(quote.AskSize); // 4 byte uint32
+        let bidPriceBytes : byte[] = BitConverter.GetBytes(quote.BidPrice); // 8 byte float
+        let bidSizeBytes : byte[] = BitConverter.GetBytes(quote.BidSize); // 4 byte uint32
+        let timestampBytes : byte[] = BitConverter.GetBytes(quote.Timestamp); // 8 byte float
+        
+        // byte 0       | type | byte
+        // byte 1       | messageLength (includes bytes 0 and 1) | byte
+        // byte 2       | contractLength | byte
+        // bytes [3...] | contract | string (ascii)
+        // next 8 bytes | askPrice | float64
+        // next 4 bytes | askSize | uint32
+        // next 8 bytes | bidPrice | float64
+        // next 4 bytes | bidSize | uint32
+        // next 8 bytes | timestamp | float64
+        let messageLength : byte = 35uy + contractLength;
+        
+        let bytes : byte[] = Array.zeroCreate (System.Convert.ToInt32(messageLength));
+        bytes[0] <- System.Convert.ToByte((int)(MessageType.Quote));
+        bytes[1] <- messageLength;
+        bytes[2] <- contractLength;
+        Array.Copy(contractBytes, 0, bytes, 3, contractLengthInt32);
+        Array.Copy(askPriceBytes, 0, bytes, 3 + contractLengthInt32, askPriceBytes.Length);
+        Array.Copy(askSizeBytes, 0, bytes, 11 + contractLengthInt32, askSizeBytes.Length);
+        Array.Copy(bidPriceBytes, 0, bytes, 15 + contractLengthInt32, bidPriceBytes.Length);
+        Array.Copy(bidSizeBytes, 0, bytes, 23 + contractLengthInt32, bidSizeBytes.Length);
+        Array.Copy(timestampBytes, 0, bytes, 27 + contractLengthInt32, timestampBytes.Length);
+        
+        bytes;
+        
+    let getRefreshBytes(refresh : Refresh) : byte[] =
+        raise (NotImplementedException());
+        Array.zeroCreate 0
+        
+    let getUnusualActivityBytes(unusualActivity : UnusualActivity) : byte[] =
+        raise (NotImplementedException());
+        Array.zeroCreate 0
+        
+    member _.TimeReceived() : DateTime = timeReceived
+        
+    member _.IsTrade() : bool =
+        trade.IsSome
+            
+    member _.Trade() : Trade =
+        trade.Value
+        
+    member _.IsQuote() : bool =
+        quote.IsSome
+            
+    member _.Quote() : Quote =
+        quote.Value
+        
+    member _.IsRefresh() : bool =
+        refresh.IsSome
+            
+    member _.Refresh() : Refresh =
+        refresh.Value
+        
+    member _.IsUnusualActivity() : bool =
+        unusualActivity.IsSome
+            
+    member _.UnusualActivity() : UnusualActivity =
+        unusualActivity.Value
+            
+    member _.GetTimeReceivedBytes() : byte[] =
+        BitConverter.GetBytes(System.Convert.ToUInt64((timeReceived - DateTime.UnixEpoch).Ticks) * 100UL)
+        
+    member _.GetEventBytes() : byte[] =
+        match trade with
+            | Some t -> getTradeBytes t
+            | None ->
+                match quote with
+                    | Some q -> getQuoteBytes q
+                    | None ->
+                        match refresh with
+                            | Some r -> getRefreshBytes r
+                            | None ->
+                                match unusualActivity with
+                                    | Some u -> getUnusualActivityBytes u
+                                    | None -> Array.Empty<byte>()
+
 type ClientStats (
     socketDataMessages : uint64,
     socketTextMessages : uint64,
