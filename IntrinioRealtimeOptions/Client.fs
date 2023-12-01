@@ -181,7 +181,7 @@ type Client(
     let httpClient : HttpClient = new HttpClient()
     
     let clientInfoHeaderKey : string = "Client-Information"
-    let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv4.2"
+    let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv5.0"
 
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
     let useOnQuote : bool = not (obj.ReferenceEquals(onQuote,null))
