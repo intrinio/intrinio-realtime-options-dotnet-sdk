@@ -58,62 +58,64 @@ type ReplayClient(
         DateTime.UnixEpoch + TimeSpan.FromTicks((int64)(BitConverter.ToUInt64(bytes) / 100UL));
     
     let parseTrade (bytes: ReadOnlySpan<byte>) : Trade =
-        let symbolLength : int = int32 (bytes.Item(2))
-        let conditionLength : int = int32 (bytes.Item(26 + symbolLength))
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(3, symbolLength))
-            Price = (float (BitConverter.ToSingle(bytes.Slice(6 + symbolLength, 4))))
-            Size = BitConverter.ToUInt32(bytes.Slice(10 + symbolLength, 4))
-            Timestamp = DateTime.UnixEpoch + TimeSpan.FromTicks(int64 (BitConverter.ToUInt64(bytes.Slice(14 + symbolLength, 8)) / 100UL))
-            TotalVolume = BitConverter.ToUInt32(bytes.Slice(22 + symbolLength, 4))
-            SubProvider = enum<SubProvider> (int32 (bytes.Item(3 + symbolLength)))
-            MarketCenter = BitConverter.ToChar(bytes.Slice(4 + symbolLength, 2))
-            Condition = if (conditionLength > 0) then Encoding.ASCII.GetString(bytes.Slice(27 + symbolLength, conditionLength)) else String.Empty
-        }
+        raise (NotImplementedException())
+        // let symbolLength : int = int32 (bytes.Item(2))
+        // let conditionLength : int = int32 (bytes.Item(26 + symbolLength))
+        // {
+        //     Symbol = Encoding.ASCII.GetString(bytes.Slice(3, symbolLength))
+        //     Price = (float (BitConverter.ToSingle(bytes.Slice(6 + symbolLength, 4))))
+        //     Size = BitConverter.ToUInt32(bytes.Slice(10 + symbolLength, 4))
+        //     Timestamp = DateTime.UnixEpoch + TimeSpan.FromTicks(int64 (BitConverter.ToUInt64(bytes.Slice(14 + symbolLength, 8)) / 100UL))
+        //     TotalVolume = BitConverter.ToUInt32(bytes.Slice(22 + symbolLength, 4))
+        //     SubProvider = enum<SubProvider> (int32 (bytes.Item(3 + symbolLength)))
+        //     MarketCenter = BitConverter.ToChar(bytes.Slice(4 + symbolLength, 2))
+        //     Condition = if (conditionLength > 0) then Encoding.ASCII.GetString(bytes.Slice(27 + symbolLength, conditionLength)) else String.Empty
+        // }
         
     let parseQuote (bytes: ReadOnlySpan<byte>) : Quote =
-        let symbolLength : int = int32 (bytes.Item(2))
-        let conditionLength : int = int32 (bytes.Item(22 + symbolLength))
-        {
-            Type = enum<QuoteType> (int32 (bytes.Item(0)))
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(3, symbolLength))
-            Price = (float (BitConverter.ToSingle(bytes.Slice(6 + symbolLength, 4))))
-            Size = BitConverter.ToUInt32(bytes.Slice(10 + symbolLength, 4))
-            Timestamp = DateTime.UnixEpoch + TimeSpan.FromTicks(int64 (BitConverter.ToUInt64(bytes.Slice(14 + symbolLength, 8)) / 100UL))
-            SubProvider = enum<SubProvider> (int32 (bytes.Item(3 + symbolLength)))
-            MarketCenter = BitConverter.ToChar(bytes.Slice(4 + symbolLength, 2))
-            Condition = if (conditionLength > 0) then Encoding.ASCII.GetString(bytes.Slice(23 + symbolLength, conditionLength)) else String.Empty
-        }
+        raise (NotImplementedException())
+        // let symbolLength : int = int32 (bytes.Item(2))
+        // let conditionLength : int = int32 (bytes.Item(22 + symbolLength))
+        // {
+        //     Type = enum<QuoteType> (int32 (bytes.Item(0)))
+        //     Symbol = Encoding.ASCII.GetString(bytes.Slice(3, symbolLength))
+        //     Price = (float (BitConverter.ToSingle(bytes.Slice(6 + symbolLength, 4))))
+        //     Size = BitConverter.ToUInt32(bytes.Slice(10 + symbolLength, 4))
+        //     Timestamp = DateTime.UnixEpoch + TimeSpan.FromTicks(int64 (BitConverter.ToUInt64(bytes.Slice(14 + symbolLength, 8)) / 100UL))
+        //     SubProvider = enum<SubProvider> (int32 (bytes.Item(3 + symbolLength)))
+        //     MarketCenter = BitConverter.ToChar(bytes.Slice(4 + symbolLength, 2))
+        //     Condition = if (conditionLength > 0) then Encoding.ASCII.GetString(bytes.Slice(23 + symbolLength, conditionLength)) else String.Empty
+        // }
         
     let parseRefresh (bytes: ReadOnlySpan<byte>) : Refresh =
         raise (NotImplementedException())
-        let symbolLength : int = int32 (bytes.Item(2))
-        let conditionLength : int = int32 (bytes.Item(26 + symbolLength))
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(3, symbolLength))
-            Price = (float (BitConverter.ToSingle(bytes.Slice(6 + symbolLength, 4))))
-            Size = BitConverter.ToUInt32(bytes.Slice(10 + symbolLength, 4))
-            Timestamp = DateTime.UnixEpoch + TimeSpan.FromTicks(int64 (BitConverter.ToUInt64(bytes.Slice(14 + symbolLength, 8)) / 100UL))
-            TotalVolume = BitConverter.ToUInt32(bytes.Slice(22 + symbolLength, 4))
-            SubProvider = enum<SubProvider> (int32 (bytes.Item(3 + symbolLength)))
-            MarketCenter = BitConverter.ToChar(bytes.Slice(4 + symbolLength, 2))
-            Condition = if (conditionLength > 0) then Encoding.ASCII.GetString(bytes.Slice(27 + symbolLength, conditionLength)) else String.Empty
-        }
+        // let symbolLength : int = int32 (bytes.Item(2))
+        // let conditionLength : int = int32 (bytes.Item(26 + symbolLength))
+        // {
+        //     Symbol = Encoding.ASCII.GetString(bytes.Slice(3, symbolLength))
+        //     Price = (float (BitConverter.ToSingle(bytes.Slice(6 + symbolLength, 4))))
+        //     Size = BitConverter.ToUInt32(bytes.Slice(10 + symbolLength, 4))
+        //     Timestamp = DateTime.UnixEpoch + TimeSpan.FromTicks(int64 (BitConverter.ToUInt64(bytes.Slice(14 + symbolLength, 8)) / 100UL))
+        //     TotalVolume = BitConverter.ToUInt32(bytes.Slice(22 + symbolLength, 4))
+        //     SubProvider = enum<SubProvider> (int32 (bytes.Item(3 + symbolLength)))
+        //     MarketCenter = BitConverter.ToChar(bytes.Slice(4 + symbolLength, 2))
+        //     Condition = if (conditionLength > 0) then Encoding.ASCII.GetString(bytes.Slice(27 + symbolLength, conditionLength)) else String.Empty
+        // }
         
     let parseUnusualActivity (bytes: ReadOnlySpan<byte>) : UnusualActivity =
         raise (NotImplementedException())
-        let symbolLength : int = int32 (bytes.Item(2))
-        let conditionLength : int = int32 (bytes.Item(26 + symbolLength))
-        {
-            Symbol = Encoding.ASCII.GetString(bytes.Slice(3, symbolLength))
-            Price = (float (BitConverter.ToSingle(bytes.Slice(6 + symbolLength, 4))))
-            Size = BitConverter.ToUInt32(bytes.Slice(10 + symbolLength, 4))
-            Timestamp = DateTime.UnixEpoch + TimeSpan.FromTicks(int64 (BitConverter.ToUInt64(bytes.Slice(14 + symbolLength, 8)) / 100UL))
-            TotalVolume = BitConverter.ToUInt32(bytes.Slice(22 + symbolLength, 4))
-            SubProvider = enum<SubProvider> (int32 (bytes.Item(3 + symbolLength)))
-            MarketCenter = BitConverter.ToChar(bytes.Slice(4 + symbolLength, 2))
-            Condition = if (conditionLength > 0) then Encoding.ASCII.GetString(bytes.Slice(27 + symbolLength, conditionLength)) else String.Empty
-        }
+        // let symbolLength : int = int32 (bytes.Item(2))
+        // let conditionLength : int = int32 (bytes.Item(26 + symbolLength))
+        // {
+        //     Symbol = Encoding.ASCII.GetString(bytes.Slice(3, symbolLength))
+        //     Price = (float (BitConverter.ToSingle(bytes.Slice(6 + symbolLength, 4))))
+        //     Size = BitConverter.ToUInt32(bytes.Slice(10 + symbolLength, 4))
+        //     Timestamp = DateTime.UnixEpoch + TimeSpan.FromTicks(int64 (BitConverter.ToUInt64(bytes.Slice(14 + symbolLength, 8)) / 100UL))
+        //     TotalVolume = BitConverter.ToUInt32(bytes.Slice(22 + symbolLength, 4))
+        //     SubProvider = enum<SubProvider> (int32 (bytes.Item(3 + symbolLength)))
+        //     MarketCenter = BitConverter.ToChar(bytes.Slice(4 + symbolLength, 2))
+        //     Condition = if (conditionLength > 0) then Encoding.ASCII.GetString(bytes.Slice(27 + symbolLength, conditionLength)) else String.Empty
+        // }
         
     let writeRowToOpenCsvWithoutLock(row : IEnumerable<string>) : unit =
         let mutable first : bool = true
@@ -543,6 +545,7 @@ type ReplayClient(
             logMessage(LogLevel.INFORMATION, "Websocket - Leaving channel: {0} (trades only = {1})", [|symbol|])
     
     do
+        raise (NotImplementedException("This class is not available for use yet."))
         config.Validate()
         for thread : Thread in threads do
             thread.Start()

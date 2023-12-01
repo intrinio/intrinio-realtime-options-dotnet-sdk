@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using Intrinio.Realtime.Options;
+using Serilog;
 using Serilog.Core;
 
 namespace SampleApp
@@ -122,27 +123,28 @@ namespace SampleApp
 		
 		static void Main(string[] args)
 		{
-			Log("Starting sample app");
 			Action<Trade> onTrade = OnTrade;
 			Action<Quote> onQuote = OnQuote;
 			
-			// Subscribe the candlestick client to trade and/or quote events as well.  It's important any method subscribed this way handles exceptions so as to not cause issues for other subscribers!
-			//_useTradeCandleSticks = true;
-			//_useQuoteCandleSticks = true;
-			//_candleStickClient = new CandleStickClient(OnTradeCandleStick, OnQuoteCandleStick, IntervalType.OneMinute, true, null, null, 0.0);
-			//onTrade += _candleStickClient.OnTrade;
-			//onQuote += _candleStickClient.OnQuote;
-			//_candleStickClient.Start();
-			
 			// //You can either automatically load the config.json by doing nothing, or you can specify your own config and pass it in.
 			// //If you don't have a config.json, don't forget to also give Serilog a config so it can write to console
-			// Log.Logger = new LoggerConfiguration().WriteTo.Console(restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information).CreateLogger();
+			// Serilog.Log.Logger = new LoggerConfiguration().WriteTo.Console(restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information).CreateLogger();
 			// Config.Config config = new Config.Config();
 			// config.Provider = Provider.OPRA;
 			// config.ApiKey = "";
-			// config.Symbols = new[] { "AAPL", "MSFT__220408C00315000" };
-			// config.NumThreads = 4;
-			// _client = new Client(onTrade, onQuote, OnRefresh, OnUnusualActivity, config);
+			// config.Symbols = new string[] { };
+			// config.NumThreads = 32;
+			Log("Starting sample app");
+			
+			// // Subscribe the candlestick client to trade and/or quote events as well.  It's important any method subscribed this way handles exceptions so as to not cause issues for other subscribers!
+			// _useTradeCandleSticks = true;
+			// _useQuoteCandleSticks = false;
+			// _candleStickClient = new CandleStickClient(OnTradeCandleStick, null, IntervalType.OneMinute, true, null, null, 0.0);
+			// onTrade += _candleStickClient.OnTrade;
+			// onQuote += _candleStickClient.OnQuote;
+			// _candleStickClient.Start();
+			
+			//_client = new Client(onTrade, onQuote, OnRefresh, OnUnusualActivity, config);
 
 			// Register only the callbacks that you want.
 			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x

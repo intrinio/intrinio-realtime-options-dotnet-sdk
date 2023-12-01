@@ -511,4 +511,5 @@ type Client(
         member this.GetStats() : ClientStats =
             new ClientStats(Interlocked.Read(&dataMsgCount), Interlocked.Read(&textMsgCount), data.Count, Interlocked.Read(&dataEventCount), Interlocked.Read(&dataTradeCount), Interlocked.Read(&dataQuoteCount), Interlocked.Read(&dataRefreshCount), Interlocked.Read(&dataUnusualActivityCount))
 
-        static member Log(messageTemplate:string, [<ParamArray>] propertyValues:obj[]) = Log.Information(messageTemplate, propertyValues)
+        member this.Log(messageTemplate:string, [<ParamArray>] propertyValues:obj[]) : unit =
+            Log.Information(messageTemplate, propertyValues)
