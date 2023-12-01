@@ -238,6 +238,7 @@ type Client(
         else Log.Warning("Invalid MessageType: {0}", msgType)
 
     let threadFn () : unit =
+        Thread.CurrentThread.Priority <- ThreadPriority.Lowest; //We shouldn't mess with user's thread priority, but we can do our best to make sure our threads run lower than the socket thread feeding the queue.
         let ct = ctSource.Token
         let mutable datum : byte[] = Array.empty<byte>
         while not (ct.IsCancellationRequested) do
