@@ -58,6 +58,12 @@ type MessageType =
     | Refresh = 2
     | UnusualActivity = 3
     
+type LogLevel =
+    | DEBUG = 0
+    | INFORMATION = 1
+    | WARNING = 2
+    | ERROR = 3
+    
 type IntervalType =
     | OneMinute = 60
     | TwoMinute = 120
@@ -909,28 +915,27 @@ type internal Tick(
         bytes;
         
     member _.TimeReceived() : DateTime = timeReceived
+    
+    member _.MessageType() : MessageType =
+        match trade.IsSome with
+        | true -> MessageType.Trade;
+        | false ->
+            match quote.IsSome with
+            | true -> MessageType.Quote;
+            | false ->
+                match refresh.IsSome with
+                | true -> MessageType.Refresh;
+                | false -> MessageType.UnusualActivity;
         
-    member _.IsTrade() : bool =
-        trade.IsSome
-            
     member _.Trade() : Trade =
         trade.Value
         
-    member _.IsQuote() : bool =
-        quote.IsSome
-            
     member _.Quote() : Quote =
         quote.Value
         
-    member _.IsRefresh() : bool =
-        refresh.IsSome
-            
     member _.Refresh() : Refresh =
         refresh.Value
         
-    member _.IsUnusualActivity() : bool =
-        unusualActivity.IsSome
-            
     member _.UnusualActivity() : UnusualActivity =
         unusualActivity.Value
             

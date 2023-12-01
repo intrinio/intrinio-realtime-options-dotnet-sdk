@@ -21,6 +21,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="runtimeconfig.template.json" />
+    <Compile Include="ReplayClient.fs" />
   </ItemGroup>
 
   <ItemGroup>
