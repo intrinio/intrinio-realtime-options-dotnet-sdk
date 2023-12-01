@@ -30,16 +30,16 @@
     </dependencies>
   </metadata>
   <files>
-	<file src="./bin/Release/net6.0/IntrinioRealtimeOptions.dll" target="lib/net6.0" />
-	<file src="./bin/Release/net6.0/IntrinioRealtimeOptions.xml" target="lib/net6.0" />
-	<file src="./bin/Release/net6.0/IntrinioRealtimeOptions.pdb" target="lib/net6.0" />
-	<file src="./bin/Release/net6.0/config.json" target="lib/net6.0" />
-	<file src="./bin/Release/net6.0/SampleApp.deps.json" target="lib/net6.0" />
-	<file src="./bin/Release/net6.0/SampleApp.dll" target="lib/net6.0" />
-	<file src="./bin/Release/net6.0/SampleApp.pdb" target="lib/net6.0" />
-	<file src="./bin/Release/net6.0/SampleApp.runtimeconfig.json" target="lib/net6.0" />  
-	<file src="./bin/Release/net6.0/SampleApp" target="lib/net6.0" />
-	<file src="../intrinio.png" target="/intrinio.png" />
-	<file src="../README.md" target="/README.md" />
+	<file src="SampleApp/bin/Release/net6.0/IntrinioRealtimeOptions.dll" target="lib/net6.0" />
+	<file src="SampleApp/bin/Release/net6.0/IntrinioRealtimeOptions.xml" target="lib/net6.0" />
+	<file src="SampleApp/bin/Release/net6.0/IntrinioRealtimeOptions.pdb" target="lib/net6.0" />
+	<file src="SampleApp/bin/Release/net6.0/config.json" target="lib/net6.0" />
+	<file src="SampleApp/bin/Release/net6.0/SampleApp.deps.json" target="lib/net6.0" />
+	<file src="SampleApp/bin/Release/net6.0/SampleApp.dll" target="lib/net6.0" />
+	<file src="SampleApp/bin/Release/net6.0/SampleApp.pdb" target="lib/net6.0" />
+	<file src="SampleApp/bin/Release/net6.0/SampleApp.runtimeconfig.json" target="lib/net6.0" />  
+	<file src="SampleApp/bin/Release/net6.0/SampleApp" target="lib/net6.0" />
+	<file src="intrinio.png" target="intrinio.png" />
+	<file src="README.md" target="README.md" />
   </files>
 </package>
