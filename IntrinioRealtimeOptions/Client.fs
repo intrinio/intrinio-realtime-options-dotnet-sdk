@@ -168,12 +168,20 @@ type Client(
     let mutable token : (string * DateTime) = (null, DateTime.Now)
     let mutable wsState: WebSocketState = new WebSocketState(null)
     let mutable dataMsgCount : uint64 = 0UL
+    let mutable dataEventCount : uint64 = 0UL
+    let mutable dataTradeCount : uint64 = 0UL
+    let mutable dataQuoteCount : uint64 = 0UL
+    let mutable dataRefreshCount : uint64 = 0UL
+    let mutable dataUnusualActivityCount : uint64 = 0UL
     let mutable textMsgCount : uint64 = 0UL
     let channels : HashSet<string> = new HashSet<string>()
     let ctSource : CancellationTokenSource = new CancellationTokenSource()
-    let data : BlockingCollection<byte[]> = new BlockingCollection<byte[]>(new ConcurrentQueue<byte[]>())
+    let data : ConcurrentQueue<byte[]> = new ConcurrentQueue<byte[]>()
     let mutable tryReconnect : (unit -> unit) = fun () -> ()
     let httpClient : HttpClient = new HttpClient()
+    
+    let clientInfoHeaderKey : string = "Client-Information"
+    let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv4.2"
 
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
     let useOnQuote : bool = not (obj.ReferenceEquals(onQuote,null))
@@ -203,40 +211,46 @@ type Client(
         then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, ClientInline.QUOTE_MESSAGE_SIZE)
             let quote: Quote = ClientInline.ParseQuote(chunk)
+            Interlocked.Increment(&dataQuoteCount) |> ignore
             startIndex <- startIndex + ClientInline.QUOTE_MESSAGE_SIZE
             if useOnQuote then onQuote.Invoke(quote)
         elif (msgType = 0uy)
         then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, ClientInline.TRADE_MESSAGE_SIZE)
             let trade: Trade = ClientInline.ParseTrade(chunk)
+            Interlocked.Increment(&dataTradeCount) |> ignore
             startIndex <- startIndex + ClientInline.TRADE_MESSAGE_SIZE
             if useOnTrade then onTrade.Invoke(trade)
         elif (msgType > 2uy)
         then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, ClientInline.UNUSUAL_ACTIVITY_MESSAGE_SIZE)
             let ua: UnusualActivity = ClientInline.ParseUnusualActivity(chunk)
+            Interlocked.Increment(&dataUnusualActivityCount) |> ignore
             startIndex <- startIndex + ClientInline.UNUSUAL_ACTIVITY_MESSAGE_SIZE
             if useOnUA then onUnusualActivity.Invoke(ua)
         elif (msgType = 2uy)
         then
             let chunk: ReadOnlySpan<byte> = new ReadOnlySpan<byte>(bytes, startIndex, ClientInline.REFRESH_MESSAGE_SIZE)
             let refresh = ClientInline.ParseRefresh(chunk)
+            Interlocked.Increment(&dataRefreshCount) |> ignore
             startIndex <- startIndex + ClientInline.REFRESH_MESSAGE_SIZE
             if useOnRefresh then onRefresh.Invoke(refresh)
         else Log.Warning("Invalid MessageType: {0}", msgType)
 
     let threadFn () : unit =
+        Thread.CurrentThread.Priority <- ThreadPriority.Lowest; //We shouldn't mess with user's thread priority, but we can do our best to make sure our threads run lower than the socket thread feeding the queue.
         let ct = ctSource.Token
         let mutable datum : byte[] = Array.empty<byte>
         while not (ct.IsCancellationRequested) do
             try
-                if data.TryTake(&datum,1000) then
+                if data.TryDequeue(&datum) then
                     // These are grouped (many) messages.
                     // The first byte tells us how many there are.
                     // From there, check the type at index 22 to know how many bytes each message has.
-                    let cnt = datum[0] |> int
+                    let cnt = datum[0] |> uint64
+                    Interlocked.Add(&dataEventCount, cnt) |> ignore
                     let mutable startIndex = 1
-                    for _ in 1 .. cnt do
+                    for _ in 1UL .. cnt do
                         parseSocketMessage(datum, &startIndex)
             with
                 | :? OperationCanceledException -> ()
@@ -343,7 +357,7 @@ type Client(
     let onDataReceived (args: DataReceivedEventArgs) : unit =
         Log.Debug("Websocket - Data received")
         Interlocked.Increment(&dataMsgCount) |> ignore
-        data.Add(args.Data)
+        data.Enqueue(args.Data)
 
     let onMessageReceived (args : MessageReceivedEventArgs) : unit =
         Log.Debug("Websocket - Message received")
@@ -412,7 +426,7 @@ type Client(
         config.Validate()
         Log.Information("useOnTrade: {0}, useOnQuote: {1}, useOnRefresh: {2}, useOnUA: {3}", useOnTrade, useOnQuote, useOnRefresh, useOnUA)
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
-        httpClient.DefaultRequestHeaders.Add("Client-Information", "IntrinioRealtimeOptionsDotNetSDKv4.2")
+        httpClient.DefaultRequestHeaders.Add(clientInfoHeaderKey, clientInfoHeaderValue)
         tryReconnect <- fun () ->
             let reconnectFn () : bool =
                 Log.Information("Websocket - Reconnecting...")
@@ -439,60 +453,64 @@ type Client(
          [<Optional; DefaultParameterValue(null:Action<Refresh>)>] onRefresh: Action<Refresh>,
          [<Optional; DefaultParameterValue(null:Action<UnusualActivity>)>] onUnusualActivity: Action<UnusualActivity>) =
         Client(onTrade, onQuote, onRefresh, onUnusualActivity, Config.LoadConfig())
+        
+    interface IOptionsWebSocketClient with
     
-    member _.Join() : unit =
-        while not(allReady()) do Thread.Sleep(1000)
-        let symbolsToAdd : HashSet<string> = new HashSet<string>(config.Symbols)
-        symbolsToAdd.ExceptWith(channels)
-        for symbol in symbolsToAdd do join(symbol)
-
-    member _.Join(symbol: string) : unit =
-        if not (String.IsNullOrWhiteSpace(symbol))
-        then
+        member _.Join() : unit =
             while not(allReady()) do Thread.Sleep(1000)
-            join(symbol)
+            let symbolsToAdd : HashSet<string> = new HashSet<string>(config.Symbols)
+            symbolsToAdd.ExceptWith(channels)
+            for symbol in symbolsToAdd do join(symbol)
 
-    member _.Join(symbols: string[]) : unit =
-        while not(allReady()) do Thread.Sleep(1000)
-        let symbolsToAdd : HashSet<string> = new HashSet<string>(symbols)
-        symbolsToAdd.ExceptWith(channels)
-        for symbol in symbolsToAdd do join(symbol)
+        member _.Join(symbol: string) : unit =
+            if not (String.IsNullOrWhiteSpace(symbol))
+            then
+                while not(allReady()) do Thread.Sleep(1000)
+                join(symbol)
 
-    member _.JoinLobby() : unit =
-        if (channels.Contains("$FIREHOSE"))
-        then Log.Warning("This client has already joined the lobby channel")
-        else
-            while not (allReady()) do Thread.Sleep(1000)
-            join("$FIREHOSE")
+        member _.Join(symbols: string[]) : unit =
+            while not(allReady()) do Thread.Sleep(1000)
+            let symbolsToAdd : HashSet<string> = new HashSet<string>(symbols)
+            symbolsToAdd.ExceptWith(channels)
+            for symbol in symbolsToAdd do join(symbol)
 
-    member _.Leave() : unit =
-        for channel in channels do leave(channel)
+        member _.JoinLobby() : unit =
+            if (channels.Contains("$FIREHOSE"))
+            then Log.Warning("This client has already joined the lobby channel")
+            else
+                while not (allReady()) do Thread.Sleep(1000)
+                join("$FIREHOSE")
 
-    member _.Leave(symbol: string) : unit =
-        if not (String.IsNullOrWhiteSpace(symbol))
-        then leave(symbol)
+        member _.Leave() : unit =
+            for channel in channels do leave(channel)
 
-    member _.Leave(symbols: string[]) : unit =
-        let matchingChannels : HashSet<string> = new HashSet<string>(symbols)
-        matchingChannels.IntersectWith(channels)
-        for channel in matchingChannels do leave(channel)
+        member _.Leave(symbol: string) : unit =
+            if not (String.IsNullOrWhiteSpace(symbol))
+            then leave(symbol)
 
-    member _.LeaveLobby() : unit =
-        if (channels.Contains("$FIREHOSE"))
-        then leave("$FIREHOSE")
+        member _.Leave(symbols: string[]) : unit =
+            let matchingChannels : HashSet<string> = new HashSet<string>(symbols)
+            matchingChannels.IntersectWith(channels)
+            for channel in matchingChannels do leave(channel)
 
-    member _.Stop() : unit =
-        for channel in channels do leave(channel)
-        Thread.Sleep(1000)
-        wsLock.EnterWriteLock()
-        try wsState.IsReady <- false
-        finally wsLock.ExitWriteLock()
-        ctSource.Cancel ()
-        Log.Information("Websocket - Closing...");
-        wsState.WebSocket.Close()
-        for thread in threads do thread.Join()
-        Log.Information("Stopped")
+        member _.LeaveLobby() : unit =
+            if (channels.Contains("$FIREHOSE"))
+            then leave("$FIREHOSE")
 
-    member _.GetStats() : (uint64 * uint64 * int) = (Interlocked.Read(&dataMsgCount), Interlocked.Read(&textMsgCount), data.Count)
+        member _.Stop() : unit =
+            for channel in channels do leave(channel)
+            Thread.Sleep(1000)
+            wsLock.EnterWriteLock()
+            try wsState.IsReady <- false
+            finally wsLock.ExitWriteLock()
+            ctSource.Cancel ()
+            Log.Information("Websocket - Closing...");
+            wsState.WebSocket.Close()
+            for thread in threads do thread.Join()
+            Log.Information("Stopped")
 
-    static member Log(messageTemplate:string, [<ParamArray>] propertyValues:obj[]) = Log.Information(messageTemplate, propertyValues)
+        member this.GetStats() : ClientStats =
+            new ClientStats(Interlocked.Read(&dataMsgCount), Interlocked.Read(&textMsgCount), data.Count, Interlocked.Read(&dataEventCount), Interlocked.Read(&dataTradeCount), Interlocked.Read(&dataQuoteCount), Interlocked.Read(&dataRefreshCount), Interlocked.Read(&dataUnusualActivityCount))
+
+        member this.Log(messageTemplate:string, [<ParamArray>] propertyValues:obj[]) : unit =
+            Log.Information(messageTemplate, propertyValues)

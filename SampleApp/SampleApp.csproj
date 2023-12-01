@@ -10,6 +10,10 @@
     <ProjectReference Include="..\IntrinioRealtimeOptions\IntrinioRealtimeOptions.fsproj" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+  </PropertyGroup>
+
   <ItemGroup>
     <Content Include="runtimeconfig.template.json" />
   </ItemGroup>

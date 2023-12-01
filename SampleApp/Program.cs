@@ -1,12 +1,14 @@
 using System;
 using System.Threading;
 using Intrinio.Realtime.Options;
+using Serilog;
+using Serilog.Core;
 
 namespace SampleApp
 {
 	class Program
 	{
-		private static Client _client = null;
+		private static IOptionsWebSocketClient _client = null;
 		private static CandleStickClient _candleStickClient = null;
 		private static Timer _timer = null;
 		private static UInt64 _tradeCount = 0UL;
@@ -57,7 +59,7 @@ namespace SampleApp
 					Interlocked.Increment(ref _unusualSweepCount);
 					break;
 				default:
-					Client.Log("Invalid UA type detected: {0}", unusualActivity.UnusualActivityType);
+					Log("Invalid UA type detected: {0}", unusualActivity.UnusualActivityType);
 					break;
 			}
 		}
@@ -90,19 +92,19 @@ namespace SampleApp
 
 		static void TimerCallback(object obj)
 		{
-			Client client = (Client) obj;
-			Tuple<UInt64, UInt64, int> stats = client.GetStats();
-			Client.Log("CLIENT STATS - Data Messages = {0}, Text Messages = {1}, Queue Depth = {2}", stats.Item1, stats.Item2, stats.Item3);
-			Client.Log("EVENT STATS - Trades = {0}, Quotes = {1}, Refreshes = {2}, Blocks = {3}, Sweeps = {4}, Large Trades = {5}, UnusualSweeps = {6}", _tradeCount, _quoteCount, _refreshCount, _blockCount, _sweepCount, _largeTradeCount, _unusualSweepCount);
+			IOptionsWebSocketClient client = (IOptionsWebSocketClient) obj;
+			ClientStats stats = client.GetStats();
+			Log("CLIENT STATS - Data Messages = {0}, Text Messages = {1}, Queue Depth = {2}, Individual Events = {3}, Trades = {4}, Quotes = {5}", stats.SocketDataMessages(), stats.SocketTextMessages(), stats.QueueDepth(), stats.EventCount(), stats.TradeCount(), stats.QuoteCount());
+			Log("EVENT STATS - Trades = {0}, Quotes = {1}, Refreshes = {2}, Blocks = {3}, Sweeps = {4}, Large Trades = {5}, UnusualSweeps = {6}", _tradeCount, _quoteCount, _refreshCount, _blockCount, _sweepCount, _largeTradeCount, _unusualSweepCount);
 			if (_useTradeCandleSticks)
-				Client.Log("TRADE CANDLESTICK STATS - TradeCandleSticks = {0}, TradeCandleSticksIncomplete = {1}", _tradeCandleStickCount, _tradeCandleStickCountIncomplete);
+				Log("TRADE CANDLESTICK STATS - TradeCandleSticks = {0}, TradeCandleSticksIncomplete = {1}", _tradeCandleStickCount, _tradeCandleStickCountIncomplete);
 			if (_useQuoteCandleSticks)
-				Client.Log("QUOTE CANDLESTICK STATS - Asks = {0}, Bids = {1}, AsksIncomplete = {2}, BidsIncomplete = {3}", _AskCandleStickCount, _BidCandleStickCount, _AskCandleStickCountIncomplete, _BidCandleStickCountIncomplete);
+				Log("QUOTE CANDLESTICK STATS - Asks = {0}, Bids = {1}, AsksIncomplete = {2}, BidsIncomplete = {3}", _AskCandleStickCount, _BidCandleStickCount, _AskCandleStickCountIncomplete, _BidCandleStickCountIncomplete);
 		}
 
 		static void Cancel(object sender, ConsoleCancelEventArgs args)
 		{
-			Client.Log("Stopping sample app");
+			Log("Stopping sample app");
 			_timer.Dispose();
 			_client.Stop();
 			if (_useTradeCandleSticks || _useQuoteCandleSticks)
@@ -113,29 +115,36 @@ namespace SampleApp
 			Environment.Exit(0);
 		}
 		
+		[MessageTemplateFormatMethod("messageTemplate")]
+		static void Log(string messageTemplate, params object[] propertyValues)
+		{
+			Serilog.Log.Information(messageTemplate, propertyValues);
+		}
+		
 		static void Main(string[] args)
 		{
-			Client.Log("Starting sample app");
 			Action<Trade> onTrade = OnTrade;
 			Action<Quote> onQuote = OnQuote;
 			
-			// Subscribe the candlestick client to trade and/or quote events as well.  It's important any method subscribed this way handles exceptions so as to not cause issues for other subscribers!
-			//_useTradeCandleSticks = true;
-			//_useQuoteCandleSticks = true;
-			//_candleStickClient = new CandleStickClient(OnTradeCandleStick, OnQuoteCandleStick, IntervalType.OneMinute, true);
-			//onTrade += _candleStickClient.OnTrade;
-			//onQuote += _candleStickClient.OnQuote;
-			//_candleStickClient.Start();
-			
 			// //You can either automatically load the config.json by doing nothing, or you can specify your own config and pass it in.
 			// //If you don't have a config.json, don't forget to also give Serilog a config so it can write to console
-			// Log.Logger = new LoggerConfiguration().WriteTo.Console(restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information).CreateLogger();
+			// Serilog.Log.Logger = new LoggerConfiguration().WriteTo.Console(restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Information).CreateLogger();
 			// Config.Config config = new Config.Config();
 			// config.Provider = Provider.OPRA;
 			// config.ApiKey = "";
-			// config.Symbols = new[] { "AAPL", "MSFT__220408C00315000" };
-			// config.NumThreads = 4;
-			// _client = new Client(onTrade, onQuote, OnRefresh, OnUnusualActivity, config);
+			// config.Symbols = new string[] { };
+			// config.NumThreads = 32;
+			Log("Starting sample app");
+			
+			// // Subscribe the candlestick client to trade and/or quote events as well.  It's important any method subscribed this way handles exceptions so as to not cause issues for other subscribers!
+			// _useTradeCandleSticks = true;
+			// _useQuoteCandleSticks = false;
+			// _candleStickClient = new CandleStickClient(OnTradeCandleStick, null, IntervalType.OneMinute, true, null, null, 0.0);
+			// onTrade += _candleStickClient.OnTrade;
+			// onQuote += _candleStickClient.OnQuote;
+			// _candleStickClient.Start();
+			
+			//_client = new Client(onTrade, onQuote, OnRefresh, OnUnusualActivity, config);
 
 			// Register only the callbacks that you want.
 			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
