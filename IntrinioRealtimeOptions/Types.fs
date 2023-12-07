@@ -741,7 +741,7 @@ type QuoteCandleStick =
     member internal this.MarkIncomplete() : unit =
         this.Complete <- false
         
-type internal Tick(
+type Tick(
     timeReceived : DateTime,
     trade: Option<Trade>,
     quote : Option<Quote>,
