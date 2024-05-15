@@ -150,7 +150,7 @@ namespace SampleApp
 			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
 			_client = new Client(onTrade: onTrade, onQuote: onQuote, onRefresh: OnRefresh, onUnusualActivity: OnUnusualActivity);
 			
-			_timer = new Timer(TimerCallback, _client, 10_000, 10_000);
+			_timer = new Timer(TimerCallback, _client, 30_000, 30_000);
 
 			// Use this to subscribe to a static list of symbols (option contracts) provided in config.json
 			_client.Join();

@@ -181,7 +181,7 @@ type Client(
     let httpClient : HttpClient = new HttpClient()
     
     let clientInfoHeaderKey : string = "Client-Information"
-    let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv5.0"
+    let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv6.0"
 
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
     let useOnQuote : bool = not (obj.ReferenceEquals(onQuote,null))
@@ -355,7 +355,7 @@ type Client(
         | _ -> Log.Error("Websocket - Error - {0}:{1}", exn.GetType(), exn.Message)
 
     let onDataReceived (args: DataReceivedEventArgs) : unit =
-        Log.Debug("Websocket - Data received")
+        //Log.Debug("Websocket - Data received")
         Interlocked.Increment(&dataMsgCount) |> ignore
         data.Enqueue(args.Data)
 
@@ -423,6 +423,7 @@ type Client(
             wsState.WebSocket.Send(message, 0, message.Length)
 
     do
+        Thread.CurrentThread.Priority <- ThreadPriority.Highest // Ensure pulling from the network has priority over worker threads.
         config.Validate()
         Log.Information("useOnTrade: {0}, useOnQuote: {1}, useOnRefresh: {2}, useOnUA: {3}", useOnTrade, useOnQuote, useOnRefresh, useOnUA)
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
