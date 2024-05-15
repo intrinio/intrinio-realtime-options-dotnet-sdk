@@ -5,7 +5,7 @@ SDK for working with Intrinio's realtime options feed via WebSocket
 
 ## Requirements
 
-- .NET 6+
+- .NET 8+
 
 ## Docker
 Add your API key to the config.json file in SampleApp, then
