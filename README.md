@@ -168,6 +168,17 @@ namespace SampleApp
 			// Register only the callbacks that you want.
 			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
 			_client = new Client(onTrade: onTrade, onQuote: onQuote, onRefresh: OnRefresh, onUnusualActivity: OnUnusualActivity);
+            
+            // Alternatively, you can programmatically make your configuration if you don't want to use a config.json file
+			// Config.Config config = new Config.Config()
+			// {
+			// 	ApiKey = "",
+			// 	Delayed = false, //Use this to specify that even though you have realtime access, for this connection you want delayed 15minute
+			// 	NumThreads = 8,
+			// 	Provider = Provider.OPRA,
+			// 	Symbols = new string[]{"AAPL", "MSFT"}
+			// };
+			// _client = new Client(onTrade: onTrade, onQuote: onQuote, onRefresh: OnRefresh, onUnusualActivity: OnUnusualActivity, config: config);
 			
 			_timer = new Timer(TimerCallback, _client, 10_000, 10_000);
 
