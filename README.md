@@ -178,6 +178,9 @@ namespace SampleApp
 			// 	Provider = Provider.OPRA,
 			// 	Symbols = new string[]{"AAPL", "MSFT"}
 			// };
+            //Also, if you're not using a config.json to configure serilogs, then you'll need to programmatically configure it:
+			// var logConfig = new ConfigurationBuilder().SetBasePath(Directory.GetCurrentDirectory()).AddJsonFile("config.json").Build();
+			// Serilog.Log.Logger = new LoggerConfiguration().ReadFrom.Configuration(logConfig).CreateLogger();
 			// _client = new Client(onTrade: onTrade, onQuote: onQuote, onRefresh: OnRefresh, onUnusualActivity: OnUnusualActivity, config: config);
 			
 			_timer = new Timer(TimerCallback, _client, 10_000, 10_000);

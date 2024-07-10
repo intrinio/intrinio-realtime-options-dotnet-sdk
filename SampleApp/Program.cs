@@ -1,6 +1,8 @@
 using System;
+using System.IO;
 using System.Threading;
 using Intrinio.Realtime.Options;
+using Microsoft.Extensions.Configuration;
 using Serilog;
 using Serilog.Core;
 
@@ -150,7 +152,7 @@ namespace SampleApp
 			// Take special care when registering the 'OnQuote' handler as it will increase throughput by ~10x
 			_client = new Client(onTrade: onTrade, onQuote: onQuote, onRefresh: OnRefresh, onUnusualActivity: OnUnusualActivity);
 			
-			// Alternatively, you can programmatically make your configuration if you don't want to use a config.json file
+			// // Alternatively, you can programmatically make your configuration if you don't want to use a config.json file
 			// Config.Config config = new Config.Config()
 			// {
 			// 	ApiKey = "",
@@ -159,6 +161,9 @@ namespace SampleApp
 			// 	Provider = Provider.OPRA,
 			// 	Symbols = new string[]{"AAPL", "MSFT"}
 			// };
+			// //Also, if you're not using a config.json to configure serilogs, then you'll need to programmatically configure it:
+			// var logConfig = new ConfigurationBuilder().SetBasePath(Directory.GetCurrentDirectory()).AddJsonFile("config.json").Build();
+			// Serilog.Log.Logger = new LoggerConfiguration().ReadFrom.Configuration(logConfig).CreateLogger();
 			// _client = new Client(onTrade: onTrade, onQuote: onQuote, onRefresh: OnRefresh, onUnusualActivity: OnUnusualActivity, config: config);
 			
 			_timer = new Timer(TimerCallback, _client, 30_000, 30_000);

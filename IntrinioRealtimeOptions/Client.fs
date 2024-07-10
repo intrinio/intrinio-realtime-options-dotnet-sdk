@@ -203,8 +203,8 @@ type Client(
 
     let getWebSocketUrl (token: string) : string =
         match config.Provider with
-          | Provider.OPRA -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token
-          | Provider.MANUAL -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token
+          | Provider.OPRA -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token + (if config.Delayed then "&delayed=true" else String.Empty)
+          | Provider.MANUAL -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token + (if config.Delayed then "&delayed=true" else String.Empty)
           | _ -> failwith "Provider not specified!"
     
     let parseSocketMessage (bytes: byte[], startIndex: byref<int>) : unit =
@@ -430,9 +430,6 @@ type Client(
         Log.Information("useOnTrade: {0}, useOnQuote: {1}, useOnRefresh: {2}, useOnUA: {3}", useOnTrade, useOnQuote, useOnRefresh, useOnUA)
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
         httpClient.DefaultRequestHeaders.Add(clientInfoHeaderKey, clientInfoHeaderValue)
-        if (config.Delayed)
-        then
-            httpClient.DefaultRequestHeaders.Add(delayHeaderKey, delayHeaderValue)
         tryReconnect <- fun () ->
             let reconnectFn () : bool =
                 Log.Information("Websocket - Reconnecting...")
