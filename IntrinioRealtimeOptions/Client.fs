@@ -290,13 +290,10 @@ type Client(
     let getToken() : string =
         tLock.EnterUpgradeableReadLock()
         try
-            if (DateTime.Now - TimeSpan.FromDays(1.0)) > (snd token)
-            then (fst token)
-            else
-                tLock.EnterWriteLock()
-                try ClientInline.DoBackoff(trySetToken)
-                finally tLock.ExitWriteLock()
-                fst token
+            tLock.EnterWriteLock()
+            try ClientInline.DoBackoff(trySetToken)
+            finally tLock.ExitWriteLock()
+            fst token
         finally tLock.ExitUpgradeableReadLock()
 
     let onOpen (_ : EventArgs) : unit =
@@ -438,14 +435,8 @@ type Client(
                     wsLock.EnterWriteLock()
                     try wsState.IsReconnecting <- true
                     finally wsLock.ExitWriteLock()
-                    if (DateTime.Now - TimeSpan.FromDays(5.0)) > (wsState.LastReset)
-                    then
-                        let _token : string = getToken()
-                        resetWebSocket(_token)
-                    else
-                        try
-                            wsState.WebSocket.Open()
-                        with _ -> ()
+                    let _token : string = getToken()
+                    resetWebSocket(_token)
                     false
             ClientInline.DoBackoff(reconnectFn)
         let _token : string = getToken()
