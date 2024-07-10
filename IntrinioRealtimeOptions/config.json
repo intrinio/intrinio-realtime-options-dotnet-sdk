@@ -3,7 +3,8 @@
 		"ApiKey": "",
 		"Provider": "OPRA",
 		"Symbols": [ "GOOG__220408C02870000", "MSFT__220408C00315000", "AAPL__220414C00180000", "SPY", "TSLA" ],
-		"NumThreads": 16
+		"NumThreads": 16,
+		"Delayed": false
 	},
 	"Serilog": {
 		"Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],

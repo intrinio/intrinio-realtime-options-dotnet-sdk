@@ -182,6 +182,8 @@ type Client(
     
     let clientInfoHeaderKey : string = "Client-Information"
     let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv6.0"
+    let delayHeaderKey : string = "delay"
+    let delayHeaderValue : string = "true"
 
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
     let useOnQuote : bool = not (obj.ReferenceEquals(onQuote,null))
@@ -428,6 +430,9 @@ type Client(
         Log.Information("useOnTrade: {0}, useOnQuote: {1}, useOnRefresh: {2}, useOnUA: {3}", useOnTrade, useOnQuote, useOnRefresh, useOnUA)
         httpClient.Timeout <- TimeSpan.FromSeconds(5.0)
         httpClient.DefaultRequestHeaders.Add(clientInfoHeaderKey, clientInfoHeaderValue)
+        if (config.Delayed)
+        then
+            httpClient.DefaultRequestHeaders.Add(delayHeaderKey, delayHeaderValue)
         tryReconnect <- fun () ->
             let reconnectFn () : bool =
                 Log.Information("Websocket - Reconnecting...")
