@@ -30,12 +30,14 @@ module Config =
         let mutable ipAddress : string = String.Empty
         let mutable numThreads : int = 4
         let mutable symbols : string[] = [||]
+        let mutable delayed : bool = false        
         
         member this.ApiKey with get () : string = apiKey and set (value : string) = apiKey <- value
         member this.Provider with get () : Provider = provider and set (value : Provider) = provider <- value
         member this.IPAddress with get () : string = ipAddress and set (value : string) = ipAddress <- value
         member this.Symbols with get () : string[] = symbols and set (value : string[]) = symbols <- value
         member this.NumThreads with get () : int = numThreads and set (value : int) = numThreads <- value
+        member this.Delayed with get () : bool = delayed and set (value : bool) = delayed <- value
         
         member _.Validate() : unit =
             if String.IsNullOrWhiteSpace(apiKey)
@@ -47,7 +49,7 @@ module Config =
             if (numThreads <= 0)
             then failwith "You must specify a valid 'NumThreads'"
             for i = 0 to symbols.Length-1 do
-                symbols[i] <- TranslateContract(symbols[i])
+                symbols[i] <- TranslateContract(symbols[i])                
     
     let LoadConfig() =
         Log.Information("Loading application configuration")

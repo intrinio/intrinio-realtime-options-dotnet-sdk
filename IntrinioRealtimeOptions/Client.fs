@@ -182,6 +182,8 @@ type Client(
     
     let clientInfoHeaderKey : string = "Client-Information"
     let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv6.0"
+    let delayHeaderKey : string = "delay"
+    let delayHeaderValue : string = "true"
 
     let useOnTrade : bool = not (obj.ReferenceEquals(onTrade,null))
     let useOnQuote : bool = not (obj.ReferenceEquals(onQuote,null))
@@ -201,8 +203,8 @@ type Client(
 
     let getWebSocketUrl (token: string) : string =
         match config.Provider with
-          | Provider.OPRA -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token
-          | Provider.MANUAL -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token
+          | Provider.OPRA -> "wss://realtime-options.intrinio.com/socket/websocket?vsn=1.0.0&token=" + token + (if config.Delayed then "&delayed=true" else String.Empty)
+          | Provider.MANUAL -> "ws://" + config.IPAddress + "/socket/websocket?vsn=1.0.0&token=" + token + (if config.Delayed then "&delayed=true" else String.Empty)
           | _ -> failwith "Provider not specified!"
     
     let parseSocketMessage (bytes: byte[], startIndex: byref<int>) : unit =
