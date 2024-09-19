@@ -2,7 +2,7 @@
 <package>
   <metadata>
     <id>IntrinioRealtimeOptions</id>
-    <version>6.3.0</version>
+    <version>6.3.1</version>
     <title>Intrinio SDK for Real-Time Options Prices</title>
     <authors>Intrinio</authors>
     <owners>Intrinio</owners>
@@ -10,7 +10,7 @@
     <licenseUrl>https://licenses.nuget.org/MIT</licenseUrl>
     <projectUrl>https://github.com/intrinio/intrinio-realtime-options-dotnet-sdk</projectUrl>
     <description>Intrinio provides real-time options prices via a two-way WebSocket connection.</description>
-    <releaseNotes>Version 6.3.0 release.</releaseNotes>
+    <releaseNotes>Version 6.3.1 release.</releaseNotes>
     <copyright>Copyright 2023 Intrinio</copyright>
     <tags>fintech options prices websocket real-time market finance</tags>
     <dependencies>
