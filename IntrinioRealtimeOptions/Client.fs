@@ -181,7 +181,7 @@ type Client(
     let httpClient : HttpClient = new HttpClient()
     
     let clientInfoHeaderKey : string = "Client-Information"
-    let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv6.2"
+    let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv6.3"
     let delayHeaderKey : string = "delay"
     let delayHeaderValue : string = "true"
 
