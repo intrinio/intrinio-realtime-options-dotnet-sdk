@@ -133,6 +133,7 @@ type Quote internal
         quote
 
 type Exchange =
+    | UNKNOWN = '?'
     | NYSE_AMERICAN = 'A'
     | BOSTON = 'B'
     | CBOE = 'C'

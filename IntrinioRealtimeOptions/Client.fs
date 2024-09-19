@@ -68,11 +68,33 @@ module private ClientInline =
         alternateFormattedChars.Slice(decimalIndex + 1).CopyTo(contractChars.Slice(18)) //decimal number copy
         
         Encoding.ASCII.GetString(contractChars)
+        
+    let inline private ParseExchange(c: char): Exchange =
+        match c with
+        | 'A' | 'a' -> Exchange.NYSE_AMERICAN
+        | 'B' | 'b' -> Exchange.BOSTON
+        | 'C' | 'c' -> Exchange.CBOE
+        | 'D' | 'd' -> Exchange.MIAMI_EMERALD
+        | 'E' | 'e' -> Exchange.BATS_EDGX
+        | 'H' | 'h' -> Exchange.ISE_GEMINI
+        | 'I' | 'i' -> Exchange.ISE
+        | 'J' | 'j' -> Exchange.MERCURY
+        | 'M' | 'm' -> Exchange.MIAMI
+        | 'N' | 'n' | 'P' | 'p' -> Exchange.NYSE_ARCA
+        | 'O' | 'o' -> Exchange.MIAMI_PEARL
+        | 'Q' | 'q' -> Exchange.NASDAQ
+        | 'S' | 's' -> Exchange.MIAX_SAPPHIRE
+        | 'T' | 't' -> Exchange.NASDAQ_BX
+        | 'U' | 'u' -> Exchange.MEMX
+        | 'W' | 'w' -> Exchange.CBOE_C2
+        | 'X' | 'x' -> Exchange.PHLX
+        | 'Z' | 'z' -> Exchange.BATS_BZX
+        | _ -> Exchange.UNKNOWN
 
     let inline internal ParseTrade (bytes: ReadOnlySpan<byte>) : Trade =
         Trade
             (FormatContract(bytes.Slice(1, int bytes[0])),
-             EnumOfValue<char,Exchange>(char(bytes[65])),
+             ParseExchange(char(bytes[65])),
              bytes[23],
              bytes[24],
              BitConverter.ToInt32(bytes.Slice(25, 4)),
