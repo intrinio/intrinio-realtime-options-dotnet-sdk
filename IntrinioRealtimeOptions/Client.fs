@@ -33,7 +33,9 @@ module private ClientInline =
     let inline internal FormatContract (alternateFormattedChars: ReadOnlySpan<byte>) : string =
         //Transform from server format to normal format
         //From this: AAPL_201016C100.00 or ABC_201016C100.003
+        //Patch: some upstream contracts now have 4 decimals. We are truncating the last decimal for now to fit in this format.
         //To this:   AAPL__201016C00100000 or ABC___201016C00100003
+        //  strike: 5 whole digits, 3 decimal digits
         
         let contractChars : Span<byte> = stackalloc<byte>(21)
         contractChars[0] <- (byte)'_'
@@ -65,7 +67,7 @@ module private ClientInline =
         alternateFormattedChars.Slice(underscoreIndex + 1, 6).CopyTo(contractChars.Slice(6)) //copy date
         alternateFormattedChars.Slice(underscoreIndex + 7, 1).CopyTo(contractChars.Slice(12)) //copy put/call
         alternateFormattedChars.Slice(underscoreIndex + 8, decimalIndex - underscoreIndex - 8).CopyTo(contractChars.Slice(18 - (decimalIndex - underscoreIndex - 8))) //whole number copy
-        alternateFormattedChars.Slice(decimalIndex + 1).CopyTo(contractChars.Slice(18)) //decimal number copy
+        alternateFormattedChars.Slice(decimalIndex + 1, Math.Min(3, alternateFormattedChars.Length - decimalIndex - 1)).CopyTo(contractChars.Slice(18)) //decimal number copy. Truncate decimals over 3 digits for now.
         
         Encoding.ASCII.GetString(contractChars)
         
@@ -203,7 +205,7 @@ type Client(
     let httpClient : HttpClient = new HttpClient()
     
     let clientInfoHeaderKey : string = "Client-Information"
-    let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv6.3"
+    let clientInfoHeaderValue : string = "IntrinioRealtimeOptionsDotNetSDKv6.4"
     let delayHeaderKey : string = "delay"
     let delayHeaderValue : string = "true"
 
